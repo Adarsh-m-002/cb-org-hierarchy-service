@@ -1,0 +1,9 @@
+FROM eclipse-temurin:17-jdk-jammy
+
+RUN apt-get update && \
+    apt-get install -y maven && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY . /opt
+WORKDIR /opt
+RUN mvn clean install

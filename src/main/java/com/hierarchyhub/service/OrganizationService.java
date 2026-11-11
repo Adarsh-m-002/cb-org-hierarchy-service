@@ -11,10 +11,10 @@ import com.hierarchyhub.model.ApiResponse;
 import com.hierarchyhub.model.Organization;
 import com.hierarchyhub.model.OrganizationDTO;
 import com.hierarchyhub.repository.OrganizationRepository;
+import com.hierarchyhub.util.SimpleRedisCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -40,7 +40,7 @@ public class OrganizationService {
     ObjectMapper objectMapper;
 
     @Autowired
-    RedisTemplate redisTemplate;
+    SimpleRedisCache redisCache;
 
     public Organization addOrganization(OrganizationRequest request) {
 
@@ -92,7 +92,7 @@ public class OrganizationService {
                 log.warn("No hierarchy data available for orgId: {}", id);
                 return response;
             }
-            List<Map<String, Object>> nodes = objectMapper.readValue(jsonResponse, new TypeReference<Object>() {});
+            List<Map<String, Object>> nodes = objectMapper.readValue(jsonResponse, new TypeReference<List<Map<String, Object>>>() {});
             Map<String, Map<String, Object>> nodeMap = nodes.stream()
                     .collect(Collectors.toMap(n -> (String) n.get(Constants.ID), n -> n));
             Map<String, Object> root = nodeMap.get(id);
@@ -215,9 +215,9 @@ public class OrganizationService {
         try {
             String redisKey = "org_hierarchy:" + objectMapper.writeValueAsString(searchCriteria);
 
-            if (Boolean.TRUE.equals(redisTemplate.hasKey(redisKey))) {
+            if (redisCache.hasKey(redisKey)) {
                 log.info("Cache hit for key: {}", redisKey);
-                List<Map<String, Object>> cachedHierarchy = (List<Map<String, Object>>) redisTemplate.opsForValue().get(redisKey);
+                List<Map<String, Object>> cachedHierarchy = redisCache.getList(redisKey);
 
                 response.setResponseCode(HttpStatus.OK);
                 response.getParams().setStatus(Constants.SUCCESS);
@@ -260,7 +260,7 @@ public class OrganizationService {
             for (Map<String, Object> root : rootNodes) {
                 attachChildren(root, nodeMap);
             }
-            redisTemplate.opsForValue().set(redisKey, rootNodes, 1, TimeUnit.HOURS);
+            redisCache.setWithTtl(redisKey, rootNodes, 1, TimeUnit.HOURS);
             log.info("Stored hierarchy in Redis with key: {}", redisKey);
             response.setResponseCode(HttpStatus.OK);
             response.getParams().setStatus(Constants.SUCCESS);

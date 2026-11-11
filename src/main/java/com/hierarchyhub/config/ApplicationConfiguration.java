@@ -1,7 +1,10 @@
 package com.hierarchyhub.config;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
 
 @Component
 public class ApplicationConfiguration {
@@ -17,6 +20,17 @@ public class ApplicationConfiguration {
 
     @Value("${neo4j.maxlevel}")
     private int maxLevel;
+
+    /**
+     * common-util's own {@code OutboundRequestHandlerServiceImpl} needs this bean to exist. Backed by
+     * {@link HttpComponentsClientHttpRequestFactory} (Apache HttpClient), not the default JDK
+     * {@code HttpURLConnection}-based factory - the JDK one hard-refuses the PATCH method
+     * ({@code ProtocolException: Invalid HTTP method: PATCH}), which the org-update sync call needs.
+     */
+    @Bean
+    public RestTemplate restTemplate() {
+        return new RestTemplate(new HttpComponentsClientHttpRequestFactory());
+    }
 
     public String getNeo4jUserName() {
         return neo4jUserName;

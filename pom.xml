@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>2.0.0.RELEASE</version>
+		<version>3.2.0</version>
 		<relativePath/>
 	</parent>
 	<groupId>com.HierarchyHub</groupId>
@@ -27,7 +27,7 @@
 		<url/>
 	</scm>
 	<properties>
-		<java.version>1.8</java.version>
+		<java.version>17</java.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -35,16 +35,44 @@
 			<artifactId>spring-boot-starter-web</artifactId>
 		</dependency>
 
+		<!-- legacy /org/v1/hierarchy (Neo4j OGM) - left as-is per explicit instruction; pinned to its original
+		     versions since Spring Boot 3's own BOM no longer manages this old, OGM-based Spring Data Neo4j API -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-neo4j</artifactId>
 			<version>2.0.0.RELEASE</version>
 		</dependency>
 
+		<!-- the starter above transitively wants this, but the parent BOM's own dependencyManagement would
+		     otherwise force it to Spring Boot 3's much newer (non-OGM) spring-data-neo4j - pinned explicitly so
+		     the legacy v1 Neo4j code (SessionFactory, @NodeEntity, Neo4jTransactionManager) keeps compiling as-is -->
+		<dependency>
+			<groupId>org.springframework.data</groupId>
+			<artifactId>spring-data-neo4j</artifactId>
+			<version>5.0.5.RELEASE</version>
+		</dependency>
+
+		<!-- same reason: spring-data-neo4j 5.0.5 was built against this generation of spring-data-commons, not
+		     Spring Boot 3's much newer managed one (whose CrudRepository signatures don't line up with it) -->
+		<dependency>
+			<groupId>org.springframework.data</groupId>
+			<artifactId>spring-data-commons</artifactId>
+			<version>2.0.7.RELEASE</version>
+		</dependency>
+
 		<dependency>
 			<groupId>org.neo4j</groupId>
 			<artifactId>neo4j-ogm-bolt-driver</artifactId>
 			<version>3.1.7</version>
+		</dependency>
+
+		<!-- neo4j-ogm-bolt-driver:3.1.7 needs the old org.neo4j.driver.v1.* package (driver 1.x) - the parent BOM
+		     would otherwise force this up to a 4.x+/5.x driver, which dropped that package (NoClassDefFoundError:
+		     org/neo4j/driver/v1/exceptions/ClientException at runtime, confirmed against a live Neo4j) -->
+		<dependency>
+			<groupId>org.neo4j.driver</groupId>
+			<artifactId>neo4j-java-driver</artifactId>
+			<version>1.7.5</version>
 		</dependency>
 
 		<dependency>
@@ -70,6 +98,62 @@
 			<artifactId>spring-boot-starter-data-redis</artifactId>
 		</dependency>
 
+		<!-- org-hierarchy v2 module (com.hierarchyhub.orghierarchy): PostgreSQL-backed link/move/unlink -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-jdbc</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-validation</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+			<version>42.5.4</version>
+		</dependency>
+
+		<!-- Bulk /bulk/link file upload: reads the uploaded .xlsx sheet, in memory, row by row -->
+		<dependency>
+			<groupId>org.apache.poi</groupId>
+			<artifactId>poi-ooxml</artifactId>
+			<version>5.2.5</version>
+		</dependency>
+
+		<!-- Cassandra (organisation master lookup) and access-token verification: the same shared library
+		     cb-search-service uses, instead of this service's own hand-rolled versions of either -->
+		<dependency>
+			<groupId>net.karmayogibharat</groupId>
+			<artifactId>common-util</artifactId>
+			<version>1.0.5</version>
+		</dependency>
+
+		<!-- Java 17: generate getters/setters/constructors instead of hand-writing them on plain bean-style DTOs -->
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<optional>true</optional>
+		</dependency>
+
+		<!-- Hierarchy mutation event streaming (/link, /bulk/link, /move, /unlink -> org-hierarchy-edges topic) -->
+		<dependency>
+			<groupId>org.springframework.kafka</groupId>
+			<artifactId>spring-kafka</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.kafka</groupId>
+			<artifactId>spring-kafka-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- The default RestTemplate request factory (JDK HttpURLConnection) refuses PATCH ("Invalid HTTP method: PATCH")
+		     - needed for the shared RestTemplate bean to call the external Sunbird org-update API. -->
+		<dependency>
+			<groupId>org.apache.httpcomponents.client5</groupId>
+			<artifactId>httpclient5</artifactId>
+		</dependency>
 
 	</dependencies>
 

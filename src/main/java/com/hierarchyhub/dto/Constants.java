@@ -138,6 +138,8 @@ public class Constants {
     public static final String MSG_LEVELS_UPDATED = "Successfully updated hierarchy level definitions";
     // a fixed business rule (also enforced by org_hierarchy_level's own CHECK constraint), never an environment setting
     public static final int MAX_ALLOWED_LEVEL = 10;
+    public static final int ROOT_LEVEL_ZERO = 0;
+    public static final String ROOT_LEVEL_ZERO_NAME = "L0";
 
     // Sunbird org-update API request body field names
     public static final String ORGANIZATION_ID = "orgId";

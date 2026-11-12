@@ -341,10 +341,10 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
         // anywhere under orgId), but a plain, filter-less read stays the original "direct children only" default -
         // so a caller who just passes orgId never gets the whole hierarchy back without asking for it.
         int depthLimit = body.getDepth() != null ? Math.min(body.getDepth(), maxDepth) : query != null ? maxDepth : 1;
-        // the org's position in the whole hierarchy (an L0 root is level 1) - not relative to this call's orgId, so
-        // calling /read on a deeply-nested org still reports that org's real, absolute level
+        // the org's position in the whole hierarchy (an active L0 root, or an unlinked org, is level 0) - not
+        // relative to this call's orgId, so calling /read on a deeply-nested org still reports its real, absolute level
         List<String> ancestorChain = orgHierarchyRepository.chainUp(orgId);
-        int rootLevel = ancestorChain.size();
+        int rootLevel = Math.max(Constants.ROOT_LEVEL_ZERO, ancestorChain.size() - 1);
         Map<Integer, HierarchyLevelRecord> levels = orgHierarchyLevelService.levelMapFor(rootOrgIdOf(ancestorChain));
 
         List<OrgHierarchyDtoWithDepth> page;
@@ -359,24 +359,24 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
         boolean hasMore = page.size() > limit;
         List<OrgHierarchyDtoWithDepth> items = hasMore ? page.subList(0, limit) : page;
 
-        int deepestLevelReached = rootLevel;
         List<ChildOrgSummary> summaries = new ArrayList<>();
         for (OrgHierarchyDtoWithDepth item : items) {
             OrgHierarchyDto node = item.node();
             Integer descendantCount = withDescendantCounts ? orgHierarchyRepository.countDescendants(node.id()) : null;
             int childLevel = rootLevel + item.depth();
-            deepestLevelReached = Math.max(deepestLevelReached, childLevel);
             summaries.add(new ChildOrgSummary(node.id(), node.name(), node.idle(), node.childCount(), descendantCount,
-                    childLevel, orgHierarchyLevelService.levelNameOf(levels, childLevel)));
+                    childLevel, orgHierarchyLevelService.levelNameOf(levels, childLevel, node.idle())));
         }
         // a cursor only makes sense when paging by cursor; an offset-paging caller computes its own next offset
         String nextCursor = hasMore && body.getOffset() == null
                 ? AppUtil.encodeCursor(lastOf(items).node().name(), lastOf(items).node().id()) : null;
+        Integer maxDescendantDepth = levelRequired ? orgHierarchyRepository.maxDescendantDepth(orgId) : null;
+        Integer maxCreatedLevel = maxDescendantDepth != null ? rootLevel + maxDescendantDepth : rootLevel;
         ReadChildrenResponse result = new ReadChildrenResponse(root.id(), root.name(), root.idle(), root.childCount(),
-                rootLevel, orgHierarchyLevelService.levelNameOf(levels, rootLevel), summaries,
+                rootLevel, orgHierarchyLevelService.levelNameOf(levels, rootLevel, root.idle()), summaries,
                 // the blueprint starts at the queried org's own level - e.g. a level-2 org reports L2..L10, never L1
                 levelRequired ? orgHierarchyLevelService.levelsBlueprint(levels, rootLevel) : null,
-                levelRequired ? deepestLevelReached : null,
+                levelRequired ? maxCreatedLevel : null,
                 levelRequired ? Constants.MAX_ALLOWED_LEVEL : null,
                 limit, hasMore, nextCursor);
         return versionedResponse(Constants.API_READ, result);
@@ -397,10 +397,8 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
                 childrenByParent.computeIfAbsent(node.parentId(), k -> new ArrayList<>()).add(node);
             }
         }
-        // the org's own absolute level in the whole hierarchy (an L0 root is level 1), so a /complete call on a
-        // deeply-nested org still reports its real level, not 1
         List<String> ancestorChain = orgHierarchyRepository.chainUp(orgId);
-        int rootLevel = ancestorChain.size();
+        int rootLevel = Math.max(Constants.ROOT_LEVEL_ZERO, ancestorChain.size() - 1);
         Map<Integer, HierarchyLevelRecord> levels = orgHierarchyLevelService.levelMapFor(rootOrgIdOf(ancestorChain));
 
         OrgTreeNode tree = buildTree(byId.get(orgId), childrenByParent, depth, 1, rootLevel, levels);
@@ -423,7 +421,7 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
             }
         }
         return new OrgTreeNode(node.id(), node.name(), node.idle(), node.childCount(), level,
-                orgHierarchyLevelService.levelNameOf(levels, level), associations);
+                orgHierarchyLevelService.levelNameOf(levels, level, node.idle()), associations);
     }
 
     /** {@code rootOrgIdOf(chainUp(orgId))} - {@code chainUp} returns {@code orgId} itself first, the L0 root last. */

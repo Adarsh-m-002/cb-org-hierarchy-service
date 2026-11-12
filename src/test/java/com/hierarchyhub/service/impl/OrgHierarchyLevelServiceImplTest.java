@@ -9,12 +9,16 @@ import com.hierarchyhub.exception.ServiceException;
 import com.hierarchyhub.model.ApiResponse;
 import com.hierarchyhub.model.HierarchyLevelRecord;
 import com.hierarchyhub.model.OrgHierarchyDto;
+import com.hierarchyhub.model.OrganisationRecord;
 import com.hierarchyhub.repository.OrgHierarchyLevelRepository;
 import com.hierarchyhub.repository.OrgHierarchyRepository;
 import com.hierarchyhub.util.AuthUtils;
+import com.hierarchyhub.util.CassandraUtils;
 import com.hierarchyhub.validation.OrgHierarchyValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
 import java.util.Arrays;
@@ -24,7 +28,10 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -37,15 +44,19 @@ public class OrgHierarchyLevelServiceImplTest {
     private final OrgHierarchyLevelRepository orgHierarchyLevelRepository = mock(OrgHierarchyLevelRepository.class);
     private final OrgHierarchyRepository orgHierarchyRepository = mock(OrgHierarchyRepository.class);
     private final OrgHierarchyValidator orgHierarchyValidator = new OrgHierarchyValidator();
+    private final CassandraUtils cassandraUtils = mock(CassandraUtils.class);
     private final AuthUtils authUtils = mock(AuthUtils.class);
     private final OrgHierarchyLevelServiceImpl service =
-            new OrgHierarchyLevelServiceImpl(orgHierarchyLevelRepository, orgHierarchyRepository, orgHierarchyValidator, authUtils);
+            new OrgHierarchyLevelServiceImpl(orgHierarchyLevelRepository, orgHierarchyRepository, orgHierarchyValidator, cassandraUtils, authUtils);
 
     @BeforeEach
     public void setUp() {
+        ReflectionTestUtils.setField(orgHierarchyValidator, "ministryOrgTypes", Collections.singletonList(16));
+        ReflectionTestUtils.setField(orgHierarchyValidator, "stateOrgTypes", Collections.singletonList(2048));
         when(authUtils.validateCallerAuthenticationAndFetchUserId(anyString())).thenReturn("user-1");
         when(authUtils.validateCallerAuthorizationAndFetchUserId(anyString())).thenReturn("user-1");
         when(orgHierarchyRepository.findById("root-1")).thenReturn(Optional.of(rootNode()));
+        when(cassandraUtils.fetchBatchOrganisationsFromTable(any())).thenReturn(Map.of("root-1", ministryOrganisationRecord()));
     }
 
     @Test
@@ -75,16 +86,57 @@ public class OrgHierarchyLevelServiceImplTest {
     }
 
     @Test
-    public void updateHierarchyLevelsProvisionsDefaultsThenAppliesTheBatchUpdate() {
-        when(orgHierarchyLevelRepository.hasLevels("root-1")).thenReturn(false);
+    public void updateHierarchyLevelsRejectsANonL0Org() {
+        when(orgHierarchyRepository.findById("root-1")).thenReturn(Optional.of(
+                new OrgHierarchyDto("root-1", "Dept", "some-parent", false, 0, Instant.now(), "user-1", Instant.now(), "user-1")));
+        ApiRequest<UpdateHierarchyLevelsRequestBody> request = requestWith(new HierarchyLevelItem(1, "Ministry", "desc"));
+
+        assertThrows(ServiceException.class, () -> service.updateHierarchyLevels("root-1", request, "token"));
+    }
+
+    @Test
+    public void updateHierarchyLevelsRejectsAnIdleOrg() {
+        when(orgHierarchyRepository.findById("root-1")).thenReturn(Optional.of(
+                new OrgHierarchyDto("root-1", "Root Org", null, true, 0, Instant.now(), "user-1", Instant.now(), "user-1")));
+        ApiRequest<UpdateHierarchyLevelsRequestBody> request = requestWith(new HierarchyLevelItem(1, "Ministry", "desc"));
+
+        assertThrows(ServiceException.class, () -> service.updateHierarchyLevels("root-1", request, "token"));
+    }
+
+    @Test
+    public void updateHierarchyLevelsRejectsWhenOrganisationTypeIsNotMinistryOrState() {
+        when(cassandraUtils.fetchBatchOrganisationsFromTable(any())).thenReturn(Map.of("root-1", nonMinistryOrganisationRecord()));
+        ApiRequest<UpdateHierarchyLevelsRequestBody> request = requestWith(new HierarchyLevelItem(1, "Ministry", "desc"));
+
+        assertThrows(ServiceException.class, () -> service.updateHierarchyLevels("root-1", request, "token"));
+    }
+
+    @Test
+    public void updateHierarchyLevelsRejectsDuplicateLevelNumbers() {
         ApiRequest<UpdateHierarchyLevelsRequestBody> request = requestWith(
-                new HierarchyLevelItem(1, "Ministry", "Central Government Ministry"),
-                new HierarchyLevelItem(2, "Department", "Department under Ministry"));
+                new HierarchyLevelItem(1, "Ministry", "desc"), new HierarchyLevelItem(1, "Ministry Again", "desc2"));
+
+        assertThrows(ServiceException.class, () -> service.updateHierarchyLevels("root-1", request, "token"));
+    }
+
+    @Test
+    public void updateHierarchyLevelsUpsertsTheWholeLevelsArraySortedByLevel() {
+        ApiRequest<UpdateHierarchyLevelsRequestBody> request = requestWith(
+                new HierarchyLevelItem(2, "Department", "Department under Ministry"),
+                new HierarchyLevelItem(1, "Ministry", "Central Government Ministry"));
 
         ApiResponse response = service.updateHierarchyLevels("root-1", request, "token");
 
-        verify(orgHierarchyLevelRepository).insertDefaultLevels(eq("root-1"), anyString());
-        verify(orgHierarchyLevelRepository).batchUpdateLevels(eq("root-1"), eq(request.getRequest().getLevels()), anyString());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<HierarchyLevelItem>> savedLevels = ArgumentCaptor.forClass(List.class);
+        verify(orgHierarchyLevelRepository).upsertLevels(eq("root-1"), savedLevels.capture(), eq("user-1"));
+        List<HierarchyLevelItem> sorted = savedLevels.getValue();
+        assertEquals(2, sorted.size());
+        assertEquals(1, sorted.get(0).getLevel()); // sorted ascending, regardless of the request's own order
+        assertEquals("Ministry", sorted.get(0).getName());
+        assertEquals(2, sorted.get(1).getLevel());
+        assertEquals("Department", sorted.get(1).getName());
+        verify(orgHierarchyLevelRepository, never()).insertDefaultLevels(anyString(), anyString());
         assertEquals(Constants.MSG_LEVELS_UPDATED, response.get("message"));
     }
 
@@ -93,6 +145,14 @@ public class OrgHierarchyLevelServiceImplTest {
         when(orgHierarchyRepository.findById("missing")).thenReturn(Optional.empty());
 
         assertThrows(ServiceException.class, () -> service.readHierarchyLevels("missing", "token"));
+    }
+
+    @Test
+    public void readHierarchyLevelsRejectsANonL0Org() {
+        when(orgHierarchyRepository.findById("root-1")).thenReturn(Optional.of(
+                new OrgHierarchyDto("root-1", "Dept", "some-parent", false, 0, Instant.now(), "user-1", Instant.now(), "user-1")));
+
+        assertThrows(ServiceException.class, () -> service.readHierarchyLevels("root-1", "token"));
     }
 
     @Test
@@ -117,24 +177,30 @@ public class OrgHierarchyLevelServiceImplTest {
     }
 
     @Test
-    public void levelsBlueprintStartsAtTheGivenLevelNotAlwaysL1() {
+    public void levelsBlueprintReturnsOnlyStoredLevelsAtOrAboveStartLevel() {
         Map<Integer, HierarchyLevelRecord> levels = Map.of(
                 1, new HierarchyLevelRecord(1, "Ministry", "Central Government Ministry"),
-                2, new HierarchyLevelRecord(2, "Department", "Department under Ministry"));
+                3, new HierarchyLevelRecord(3, "Directorate", "Autonomous Board or Directorate"),
+                5, new HierarchyLevelRecord(5, "Field Unit", "District Office or Field Unit"));
 
-        List<HierarchyLevelItem> blueprint = service.levelsBlueprint(levels, 2);
+        List<HierarchyLevelItem> blueprint = service.levelsBlueprint(levels, 3);
 
-        assertEquals(9, blueprint.size()); // levels 2..10, never level 1
-        assertEquals(2, blueprint.get(0).getLevel());
-        assertEquals("Department", blueprint.get(0).getName());
-        assertEquals(10, blueprint.get(blueprint.size() - 1).getLevel());
+        assertEquals(2, blueprint.size()); // only the stored levels 3 and 5 - level 1 excluded, no padding up to 10
+        assertEquals(3, blueprint.get(0).getLevel());
+        assertEquals("Directorate", blueprint.get(0).getName());
+        assertEquals(5, blueprint.get(1).getLevel());
     }
 
     @Test
-    public void levelsBlueprintFallsBackToLPlusLevelForAnUncustomizedLevel() {
+    public void levelsBlueprintIsEmptyWhenNothingIsStoredForThatRoot() {
         List<HierarchyLevelItem> blueprint = service.levelsBlueprint(Collections.emptyMap(), 3);
 
-        assertEquals("L3", blueprint.get(0).getName());
+        assertTrue(blueprint.isEmpty()); // DB-truth only - never fabricates an "L3" fallback entry
+    }
+
+    @Test
+    public void levelNameOfReturnsNullRatherThanAFabricatedFallbackWhenNotStored() {
+        assertNull(service.levelNameOf(Collections.emptyMap(), 7));
     }
 
     @Test
@@ -155,5 +221,13 @@ public class OrgHierarchyLevelServiceImplTest {
 
     private static OrgHierarchyDto rootNode() {
         return new OrgHierarchyDto("root-1", "Root Org", null, false, 1, Instant.now(), "user-1", Instant.now(), "user-1");
+    }
+
+    private static OrganisationRecord ministryOrganisationRecord() {
+        return new OrganisationRecord("root-1", "Root Org", true, null, 16, "ministry", null);
+    }
+
+    private static OrganisationRecord nonMinistryOrganisationRecord() {
+        return new OrganisationRecord("root-1", "Root Org", true, "ministry-1", 1, "ministry", null);
     }
 }

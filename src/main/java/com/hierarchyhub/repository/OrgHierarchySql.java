@@ -115,6 +115,21 @@ final class OrgHierarchySql {
             ") SELECT count(*) - 1 FROM sub";
 
     /**
+     * The deepest hop-count reached anywhere in {@code orgId}'s own subtree (a direct child is {@code depth = 1},
+     * same convention as {@link #DESCENDANTS_FIRST_PAGE}'s own {@code depth} column), bounded by {@code maxDepth} -
+     * {@code NULL} if {@code orgId} has no children at all. One id-only recursive scan, same shape/cost as
+     * {@link #COUNT_DESCENDANTS}; used by {@code /read} so {@code maxCreatedLevel} reports the true deepest
+     * configured level under this org, not just whatever page of direct children this call happened to return.
+     */
+    static final String MAX_DESCENDANT_DEPTH =
+            "WITH RECURSIVE sub(id, depth) AS ( " +
+            "  SELECT id, 1 FROM org_hierarchy WHERE parent_id = :orgId " +
+            "  UNION ALL " +
+            "  SELECT o.id, s.depth + 1 FROM org_hierarchy o JOIN sub s ON o.parent_id = s.id " +
+            "  WHERE s.depth < :maxDepth " +
+            ") SELECT max(depth) FROM sub";
+
+    /**
      * Just the ids of the subtree rooted at {@code id} (itself included), bounded by {@code maxDepth} hops - no
      * other column is read, so unlinking a 500+ row branch doesn't instantiate 500+ full {@code OrgHierarchyDto}
      * objects on heap just to throw away everything except their ids.

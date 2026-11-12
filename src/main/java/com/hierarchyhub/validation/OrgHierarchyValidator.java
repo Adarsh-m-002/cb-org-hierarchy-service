@@ -116,7 +116,7 @@ public class OrgHierarchyValidator {
 
     public void requireMinistryOrStateRoot(String id, OrganisationRecord record) {
         if (!isMinistryOrStateRoot(record)) {
-            throw new ServiceException(ErrorCode.ORG_NOT_FOUND, String.format(Constants.ERR_PARENT_NOT_IN_HIERARCHY, id));
+            throw new ServiceException(ErrorCode.INVALID_REQUEST, String.format(Constants.ERR_PARENT_NOT_MINISTRY_OR_STATE, id));
         }
     }
 

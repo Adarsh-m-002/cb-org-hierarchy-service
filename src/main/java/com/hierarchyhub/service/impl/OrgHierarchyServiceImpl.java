@@ -87,12 +87,24 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
 
         String parentOrgId = request.getRequest().getParentOrgId();
         List<String> childOrganisationIds = extractUniqueChildIdentifiers(request.getRequest().getAssociations());
+
+        if (childOrganisationIds.isEmpty()) {
+            log.info("Starting linkOrgToHierarchy (root-init only, no associations): parentOrgId={}", parentOrgId);
+            return initializeRootHierarchyOnly(parentOrgId, userId);
+        }
+
         log.info("Starting linkOrgToHierarchy: parentOrgId={}, requestedChildCount={}", parentOrgId, childOrganisationIds.size());
 
         BatchLinkExecutionResult executionResult = linkChildrenUnderParentBatch(parentOrgId, childOrganisationIds, userId);
 
         return buildLinkApiResponse(childOrganisationIds.size(),
                 executionResult.getSucceededChildOrganisationIds().size(), executionResult.getFailureErrors());
+    }
+
+    private ApiResponse initializeRootHierarchyOnly(String parentOrgId, String userId) {
+        orgHierarchyRepository.lockRows(Collections.singletonList(parentOrgId));
+        validateParentAndCreateHierarchyIfNeeded(parentOrgId, userId);
+        return versionedResponse(Constants.API_LINK, new BatchOperationResponse(Constants.MSG_ORG_HIERARCHY_CREATED_WITH_LEVELS));
     }
 
     @Override
@@ -208,8 +220,10 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
         }
     }
 
-    /** Dedupes while preserving order: a duplicate childOrgId would otherwise be validated/attached twice and double-count. */
     private static List<String> extractUniqueChildIdentifiers(List<AssociationRef> associations) {
+        if (CollectionUtils.isEmpty(associations)) {
+            return Collections.emptyList();
+        }
         LinkedHashSet<String> ids = new LinkedHashSet<>();
         for (AssociationRef ref : associations) {
             ids.add(ref.getChildOrgId());

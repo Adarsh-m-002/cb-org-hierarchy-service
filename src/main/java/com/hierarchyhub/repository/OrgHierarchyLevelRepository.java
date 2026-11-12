@@ -19,11 +19,6 @@ public class OrgHierarchyLevelRepository {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /** The default 10-level seed's description words, {@code L}{level} as the name - see {@link #insertDefaultLevels}. */
-    private static final String[] DEFAULT_LEVEL_DESCRIPTIONS = {
-            "LevelOne", "LevelTwo", "LevelThree", "LevelFour", "LevelFive",
-            "LevelSix", "LevelSeven", "LevelEight", "LevelNine", "LevelTen"};
-
     private final NamedParameterJdbcTemplate jdbc;
 
     public OrgHierarchyLevelRepository(NamedParameterJdbcTemplate jdbc) {
@@ -35,13 +30,9 @@ public class OrgHierarchyLevelRepository {
         return Boolean.TRUE.equals(exists);
     }
 
-    /** Inserts the default {@code L1}..{@code L10} JSONB array for {@code rootOrgId} as one row; a racing concurrent call is a safe no-op. */
+    /** Inserts the default {@code L1}..{@code L10} JSONB array (see {@link Constants#DEFAULT_LEVELS}) for {@code rootOrgId} as one row; a racing concurrent call is a safe no-op. */
     public void insertDefaultLevels(String rootOrgId, String userId) {
-        List<HierarchyLevelRecord> defaults = new ArrayList<>(Constants.MAX_ALLOWED_LEVEL);
-        for (int level = 1; level <= Constants.MAX_ALLOWED_LEVEL; level++) {
-            defaults.add(new HierarchyLevelRecord(level, "L" + level, DEFAULT_LEVEL_DESCRIPTIONS[level - 1]));
-        }
-        jdbc.update(OrgHierarchyLevelSql.INSERT_DEFAULT_LEVELS, writeParams(rootOrgId, defaults, userId));
+        jdbc.update(OrgHierarchyLevelSql.INSERT_DEFAULT_LEVELS, writeParams(rootOrgId, Constants.DEFAULT_LEVELS, userId));
     }
 
     /** Replaces the entire stored {@code levels} array for {@code rootOrgId} with exactly {@code items} - a whole-document upsert, never a per-level merge. */

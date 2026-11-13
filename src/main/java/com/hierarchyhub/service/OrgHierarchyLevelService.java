@@ -35,10 +35,12 @@ public interface OrgHierarchyLevelService {
     /** {@code level -> HierarchyLevelRecord} for {@code rootOrgId}, for both per-node {@code levelName} lookups and the {@code levels} blueprint. */
     Map<Integer, HierarchyLevelRecord> levelMapFor(String rootOrgId);
 
-    /** Falls back to {@code "L" + level} for a level the root hasn't customized (or has no rows for at all). */
+    /** DB-truth only: {@code null} (never a fabricated {@code "L" + level}) when that level isn't stored for this root. */
     String levelNameOf(Map<Integer, HierarchyLevelRecord> levels, int level);
 
-    /** The {@code startLevel..10} blueprint - every level the caller hasn't customized still reports its {@code "L" + level} fallback name. */
+    String levelNameOf(Map<Integer, HierarchyLevelRecord> levels, int level, boolean idle);
+
+    /** Only the levels actually stored at {@code >= startLevel} - DB-truth only, never padded up to {@code 10} with fabricated entries. */
     List<HierarchyLevelItem> levelsBlueprint(Map<Integer, HierarchyLevelRecord> levels, int startLevel);
 
     /** The deepest level reached anywhere in {@code node}'s own subtree. */

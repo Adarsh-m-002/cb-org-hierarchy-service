@@ -86,6 +86,12 @@ public class OrgHierarchyRepository {
         return count == null ? 0 : count;
     }
 
+    /** The deepest hop-count reached anywhere in {@code orgId}'s own subtree ({@code null} if it has no children). */
+    public Integer maxDescendantDepth(String orgId) {
+        MapSqlParameterSource p = params("orgId", orgId).addValue("maxDepth", maxDepth);
+        return jdbc.queryForObject(OrgHierarchySql.MAX_DESCENDANT_DEPTH, p, Integer.class);
+    }
+
     /** Every row of the subtree rooted at {@code id} (itself included), at most {@code maxDepth} hops deep. */
     public List<OrgHierarchyDto> findSubtree(String id) {
         MapSqlParameterSource p = params("id", id).addValue("maxDepth", maxDepth);

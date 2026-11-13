@@ -116,7 +116,7 @@ public class OrgHierarchyValidator {
 
     public void requireMinistryOrStateRoot(String id, OrganisationRecord record) {
         if (!isMinistryOrStateRoot(record)) {
-            throw new ServiceException(ErrorCode.ORG_NOT_FOUND, String.format(Constants.ERR_PARENT_NOT_IN_HIERARCHY, id));
+            throw new ServiceException(ErrorCode.INVALID_REQUEST, String.format(Constants.ERR_PARENT_NOT_MINISTRY_OR_STATE, id));
         }
     }
 
@@ -132,6 +132,22 @@ public class OrgHierarchyValidator {
     public void requireNoActiveChildren(String orgId, boolean hasActiveChildren) {
         if (hasActiveChildren) {
             throw new ServiceException(ErrorCode.ORGANISATION_HAS_CHILDREN, String.format(Constants.ERR_ORGANISATION_HAS_CHILDREN, orgId));
+        }
+    }
+
+    /** {@code org} must be an active L0 (no parent, not idle) - the first of the two levels-config gates (GET/PATCH /levels/{rootOrgId}). */
+    public void requireActiveRoot(OrgHierarchyDto org) {
+        if (org.parentId() != null || org.idle()) {
+            throw new ServiceException(ErrorCode.INVALID_REQUEST,
+                    "Level configuration is only allowed for active L0 Ministry or State root organisations");
+        }
+    }
+
+    /** {@code orgRecord} must be a Ministry or State per Cassandra's own organizationType - the second levels-config gate. */
+    public void requireMinistryOrStateOrganisationType(OrganisationRecord orgRecord) {
+        if (orgRecord == null || !isMinistryOrStateRoot(orgRecord)) {
+            throw new ServiceException(ErrorCode.INVALID_REQUEST,
+                    "Level configuration is only allowed for L0 Ministry or State organisations");
         }
     }
 

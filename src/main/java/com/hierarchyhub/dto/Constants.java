@@ -1,5 +1,9 @@
 package com.hierarchyhub.dto;
 
+import com.hierarchyhub.model.HierarchyLevelRecord;
+
+import java.util.List;
+
 public class Constants {
     public static final String CHILDREN = "children";
     public static final String PARENT_OF = "parent_of";
@@ -91,6 +95,10 @@ public class Constants {
     public static final String MSG_ALL_ORGS_FAILED_TO_LINK = "Failed to add organisations to the hierarchy";
     public static final String MSG_FAILED_TO_LINK_N_OF_TOTAL = "Failed to link %d of %d organisations";
 
+    // POST /link with parentOrgId only (no associations): root-initialization-only response - one message either
+    // way (new root or already existed), since ensureDefaultLevelsProvisioned is idempotent in both cases
+    public static final String MSG_ORG_HIERARCHY_CREATED_WITH_LEVELS = "Organisation hierarchy was created with levels";
+
     public static final String ERR_CANNOT_BE_OWN_PARENT = "An org cannot be its own parent";
     public static final String ERR_ORG_NOT_FOUND_IN_TABLE = "Org %s not found in organisation table";
     public static final String ERR_ORG_IS_INACTIVE = "Org %s is inactive";
@@ -102,7 +110,7 @@ public class Constants {
 
     public static final String ERR_PARENT_NOT_FOUND_IN_TABLE = "Parent %s not found in organisation table";
     public static final String ERR_PARENT_IS_INACTIVE = "Parent %s is inactive";
-    public static final String ERR_PARENT_NOT_IN_HIERARCHY = "Parent %s is not in the hierarchy: map it first (parents are mapped top-down)";
+    public static final String ERR_PARENT_NOT_MINISTRY_OR_STATE = "Org %s is not a Ministry or State organisation ";
 
     // POST /unlink
     public static final String ERR_ORGANISATION_HAS_CHILDREN = "Organisation %s has active child organisations in the "
@@ -138,6 +146,21 @@ public class Constants {
     public static final String MSG_LEVELS_UPDATED = "Successfully updated hierarchy level definitions";
     // a fixed business rule (also enforced by org_hierarchy_level's own CHECK constraint), never an environment setting
     public static final int MAX_ALLOWED_LEVEL = 10;
+    public static final int ROOT_LEVEL_ZERO = 0;
+    public static final String ROOT_LEVEL_ZERO_NAME = "L0";
+
+
+    public static final List<HierarchyLevelRecord> DEFAULT_LEVELS = List.of(
+            new HierarchyLevelRecord(1, "L1", "LevelOne"),
+            new HierarchyLevelRecord(2, "L2", "LevelTwo"),
+            new HierarchyLevelRecord(3, "L3", "LevelThree"),
+            new HierarchyLevelRecord(4, "L4", "LevelFour"),
+            new HierarchyLevelRecord(5, "L5", "LevelFive"),
+            new HierarchyLevelRecord(6, "L6", "LevelSix"),
+            new HierarchyLevelRecord(7, "L7", "LevelSeven"),
+            new HierarchyLevelRecord(8, "L8", "LevelEight"),
+            new HierarchyLevelRecord(9, "L9", "LevelNine"),
+            new HierarchyLevelRecord(10, "L10", "LevelTen"));
 
     // Sunbird org-update API request body field names
     public static final String ORGANIZATION_ID = "orgId";

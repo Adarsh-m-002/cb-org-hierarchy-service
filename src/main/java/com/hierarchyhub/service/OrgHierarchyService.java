@@ -7,6 +7,7 @@ import com.hierarchyhub.dto.MoveOrgRequestBody;
 import com.hierarchyhub.dto.ReadChildrenRequestBody;
 import com.hierarchyhub.dto.UnlinkOrgRequestBody;
 import com.hierarchyhub.model.ApiResponse;
+import com.hierarchyhub.model.OrgDataRecord;
 
 import java.util.List;
 
@@ -24,4 +25,6 @@ public interface OrgHierarchyService {
     ApiResponse readOrgChildren(String orgId, ApiRequest<ReadChildrenRequestBody> request, String accessToken);
 
     ApiResponse readOrgHierarchy(String orgId, Integer depth, boolean levelRequired, String accessToken);
+
+    List<OrgDataRecord> getMasterData(String rootOrgId);
 }

@@ -246,7 +246,7 @@ public class OrgHierarchyValidatorTest {
             validator.requireMinistryOrStateRoot("parent-1", organisation("parent-1", true, "ministry-1", 128, "ministry"));
             fail("Expected ServiceException");
         } catch (ServiceException e) {
-            assertEquals(ErrorCode.ORG_NOT_FOUND, e.errorCode());
+            assertEquals(ErrorCode.INVALID_REQUEST, e.errorCode());
         }
     }
 
@@ -442,6 +442,6 @@ public class OrgHierarchyValidatorTest {
     }
 
     private static OrgHierarchyDto node(String id, String parentId) {
-        return new OrgHierarchyDto(id, "Name", parentId, false, 0, null, null, null, null);
+        return new OrgHierarchyDto(id, "Name", parentId, false, 0);
     }
 }

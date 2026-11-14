@@ -12,8 +12,8 @@ public class Constants {
     public static final String ADDITIONAL_PROPERTIES = "additionalProperties";
     public static final String ID = "id";
     public static final String PARENT_ORG_ID   = "parentOrgId";
+    public static final String ROOT_ORG_ID     = "rootOrgId";
     public static final String ORGANIZATIONS   = "organizations";
-    public static final String SUCCESSFUL = "Successful";
     public static final String FAILED = "Failed";
     public static final String MESSAGE = "message";
     public static final String RESPONSE = "response";
@@ -27,12 +27,11 @@ public class Constants {
     public static final String API_HIERARCHY = "api.org.hierarchy";
     public static final String API_BULK_LINK = "api.org.hierarchy.bulk.link";
 
-    // /bulk/link sheet: a fixed sheet name and column headers, both matched case-insensitively
+    // /bulk/link sheet: a fixed sheet name, matched case-insensitively
     public static final String BULK_LINK_SHEET_NAME = "referenceSheet";
-    public static final String BULK_LINK_COLUMN_PARENT = "parentOrgId";
-    public static final String BULK_LINK_COLUMN_CHILD = "childOrgId";
-    // /bulk/link always responds at submission time, before any row is processed - this is the only status it ever reports
-    public static final String BULK_LINK_STATUS_INITIATED = "INITIATED";
+
+    public static final String BULK_LINK_PARENT_ORGANIZATION_COLUMN = "parentOrganization";
+    public static final String BULK_LINK_CHILD_ORGANIZATION_COLUMN = "childOrganization";
 
     // response envelope status used by the ApiResponse.success/failure factories (uppercase, distinct from the
     // pre-existing lowercase SUCCESS/FAILED above so no existing caller's behaviour changes)
@@ -62,20 +61,14 @@ public class Constants {
     public static final String HIERARCHY_TYPE_MINISTRY = "ministry";
     public static final String HIERARCHY_TYPE_STATE = "state";
 
-    // org_hierarchy (PostgreSQL) columns read by OrgHierarchyRepository's row mapper
+    public static final String ORG_HIERARCHY_TABLE = "org_hierarchy";
+    public static final String ORG_HIERARCHY_LEVEL_TABLE = "org_hierarchy_level";
+
     public static final String NAME = "name";
     public static final String PARENT_ID = "parent_id";
     public static final String IDLE = "idle";
     public static final String CHILD_COUNT = "child_count";
-    public static final String CREATED_AT = "created_at";
-    public static final String CREATED_BY = "created_by";
-    public static final String UPDATED_AT = "updated_at";
-    public static final String UPDATED_BY = "updated_by";
     public static final String DEPTH = "depth";
-
-    // org_hierarchy_level (PostgreSQL) columns read by OrgHierarchyLevelRepository's row mapper
-    public static final String LEVEL = "level";
-    public static final String DESCRIPTION = "description";
 
     // named-parameter key for the acting user on every org_hierarchy/org_hierarchy_level audit write
     // (created_by/updated_by), shared by OrgHierarchyRepository and OrgHierarchyLevelRepository
@@ -122,7 +115,6 @@ public class Constants {
 
     // Kafka hierarchy-mutation event streaming (org-hierarchy-edges topic): event types and system-actor labels
     public static final String EVENT_TYPE_LINK = "LINK";
-    public static final String EVENT_TYPE_BULK_LINK = "BULK_LINK";
     public static final String EVENT_TYPE_MOVE = "MOVE";
     public static final String EVENT_TYPE_UNLINK = "UNLINK";
     public static final String SYSTEM_USER = "system";
@@ -139,6 +131,7 @@ public class Constants {
 
     // bounded executor bean names
     public static final String PARENT_PATH_EXECUTOR = "parentPathExecutor";
+    public static final String BULK_UPLOAD_KAFKA_LISTENER_FACTORY = "bulkUploadListenerContainerFactory";
 
     // org_hierarchy_level: hierarchy level customization/retrieval (PATCH & GET /org/v2/hierarchy/levels/{rootOrgId})
     public static final String API_LEVELS_UPDATE = "api.org.hierarchy.levels.update";
@@ -171,6 +164,55 @@ public class Constants {
     public static final String X_AUTH_USER_HEADER = "x-authenticated-user-token";
     public static final String RESPONSE_CODE_KEY = "responseCode";
     public static final String RESPONSE_CODE_OK = "OK";
+
+
+    public static final String BULK_LINK_SAMPLE_FILE_NAME = "orgHierarchyBulkUploadSample.xlsx";
+    public static final String BULK_LINK_EXPORT_FILE_NAME_PREFIX = "orgHierarchyExport_";
+    public static final String BULK_LINK_MASTER_DATA_SHEET_NAME = "masterData";
+    public static final String BULK_LINK_ORGANIZATION_NAME_COLUMN = "organizationName";
+    public static final int BULK_LINK_MASTER_DATA_MAX_ROWS = 1000;
+    public static final String CASSANDRA_BULK_UPLOAD_TABLE = "org_hierarchy_mapping_bulk_upload";
+    public static final String ROOT_ORG_ID_LOWER = "rootorgid";
+    public static final String IDENTIFIER = "identifier";
+    public static final String FILE_NAME = "fileName";
+    public static final String FILE_PATH = "filePath";
+    public static final String DATE_CREATED_ON = "dateCreatedOn";
+    public static final String DATE_UPDATED_ON = "dateUpdatedOn";
+
+    public static final String CREATED_BY_CAMEL = "createdBy";
+    public static final String TOTAL_RECORDS = "totalRecords";
+    public static final String SUCCESSFUL_RECORDS_COUNT = "successfulRecordsCount";
+    public static final String FAILED_RECORDS_COUNT = "failedRecordsCount";
+
+    public static final String INITIATED = "INITIATED";
+    public static final String IN_PROGRESS = "IN-PROGRESS";
+    public static final String SUCCESSFUL = "SUCCESSFUL";
+
+    public static final String ORG_NAME = "orgName";
+    public static final String MINISTRY_OR_STATE_ID = "ministryOrStateId";
+    public static final String ORG_INDEX_ELASTICSEARCH_CLIENT_BEAN = "orgIndexElasticsearchClient";
+    public static final String ORG_MASTER_DATA_CACHE_KEY_PREFIX = "org-master-data:";
+    public static final String SCROLL_ID = "_scroll_id";
+    public static final String SCROLL_ID_PARAM = "scroll_id";
+    public static final String HITS = "hits";
+    public static final String SOURCE = "_source";
+    public static final String SIZE = "size";
+    public static final String SCROLL = "scroll";
+    public static final String ES_SEARCH_PATH = "/_search";
+    public static final String ES_SEARCH_SCROLL_PATH = "/_search/scroll";
+    public static final String HTTP_METHOD_POST = "POST";
+    public static final String HTTP_METHOD_DELETE = "DELETE";
+    public static final String QUERY = "query";
+    public static final String BOOL = "bool";
+    public static final String MUST = "must";
+    public static final String TERM = "term";
+    public static final String SCROLL_KEEP_ALIVE_UNIT_MINUTES = "m";
+    public static final String RAW_FIELD_SUFFIX = ".raw";
+    public static final String ROW_STATUS_SUCCESS = "Success";
+    public static final String RESULT_SHEET_STATUS_COLUMN = "Status";
+    public static final String RESULT_SHEET_ERROR_COLUMN = "Error";
+    public static final String SYSTEM_ERROR_PREFIX = "System error: ";
+    public static final String RESULT_FILE_NAME_PREFIX = "result_";
 
     private Constants() {
         throw new IllegalStateException("Utility class");

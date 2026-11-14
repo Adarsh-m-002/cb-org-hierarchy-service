@@ -3,6 +3,7 @@ package com.hierarchyhub.util;
 import com.hierarchyhub.dto.BulkLinkRow;
 import com.hierarchyhub.dto.BulkLinkRowFailure;
 import com.hierarchyhub.exception.ServiceException;
+import com.hierarchyhub.model.ParsedBulkLinkSheet;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -20,26 +21,26 @@ public class BulkLinkSheetReaderTest {
 
     @Test
     public void extractsIdFromAngleBrackets() {
-        assertEquals("01425456149399142419", BulkLinkSheetReader.extractId("Delhi Government<01425456149399142419>"));
-        assertEquals("01425713869767475221", BulkLinkSheetReader.extractId("UK Trust authority<01425713869767475221>"));
+        assertEquals("01425456149399142419", ExcelUtils.extractId("Delhi Government<01425456149399142419>"));
+        assertEquals("01425713869767475221", ExcelUtils.extractId("UK Trust authority<01425713869767475221>"));
     }
 
     @Test
     public void fallsBackToRawValueWhenNoAngleBrackets() {
-        assertEquals("01425456149399142419", BulkLinkSheetReader.extractId(" 01425456149399142419 "));
+        assertEquals("01425456149399142419", ExcelUtils.extractId(" 01425456149399142419 "));
     }
 
     @Test
     public void parsesRowsDedupesChildrenAndKeepsDuplicateParents() throws IOException {
         byte[] file = sheet(new String[][] {
-                {"parentOrgId", "childOrgId"},
+                {"parentOrganization", "childOrganization"},
                 {"Delhi Government<P1>", "Org A<C1>"},
                 {"Delhi Government<P1>", "Org B<C2>"},      // same parent again: allowed
                 {"Delhi Government<P1>", "Org A again<C1>"}, // duplicate childOrgId: skipped
                 {"", ""},                                    // blank trailing row: skipped silently
         });
 
-        BulkLinkSheetReader.ParsedSheet parsed = BulkLinkSheetReader.read(new ByteArrayInputStream(file));
+        ParsedBulkLinkSheet parsed = ExcelUtils.read(new ByteArrayInputStream(file));
 
         assertEquals(2, parsed.rows().size());
         assertEquals(0, parsed.rowFailures().size());
@@ -54,24 +55,24 @@ public class BulkLinkSheetReaderTest {
     @Test
     public void recordsRowFailureForBlankColumn() throws IOException {
         byte[] file = sheet(new String[][] {
-                {"parentOrgId", "childOrgId"},
+                {"parentOrganization", "childOrganization"},
                 {"Delhi Government<P1>", ""},
         });
 
-        BulkLinkSheetReader.ParsedSheet parsed = BulkLinkSheetReader.read(new ByteArrayInputStream(file));
+        ParsedBulkLinkSheet parsed = ExcelUtils.read(new ByteArrayInputStream(file));
 
         assertEquals(0, parsed.rows().size());
         assertEquals(1, parsed.rowFailures().size());
         BulkLinkRowFailure failure = parsed.rowFailures().get(0);
         assertEquals(Integer.valueOf(2), failure.getRowNumber());
-        assertEquals("childOrgId is blank", failure.getReason());
+        assertEquals("childOrganization is blank", failure.getReason());
     }
 
     @Test
     public void rejectsFileWithoutTheExpectedSheet() throws IOException {
-        byte[] file = sheetNamed("someOtherSheet", new String[][] {{"parentOrgId", "childOrgId"}});
+        byte[] file = sheetNamed("someOtherSheet", new String[][] {{"parentOrganization", "childOrganization"}});
         try {
-            BulkLinkSheetReader.read(new ByteArrayInputStream(file));
+            ExcelUtils.read(new ByteArrayInputStream(file));
             fail("expected a ServiceException");
         } catch (ServiceException e) {
             assertTrue(e.getMessage().contains("referenceSheet"));
@@ -80,12 +81,12 @@ public class BulkLinkSheetReaderTest {
 
     @Test
     public void rejectsSheetMissingRequiredColumns() throws IOException {
-        byte[] file = sheet(new String[][] {{"parentOrgId", "somethingElse"}});
+        byte[] file = sheet(new String[][] {{"parentOrganization", "somethingElse"}});
         try {
-            BulkLinkSheetReader.read(new ByteArrayInputStream(file));
+            ExcelUtils.read(new ByteArrayInputStream(file));
             fail("expected a ServiceException");
         } catch (ServiceException e) {
-            assertTrue(e.getMessage().contains("childOrgId"));
+            assertTrue(e.getMessage().contains("childOrganization"));
         }
     }
 

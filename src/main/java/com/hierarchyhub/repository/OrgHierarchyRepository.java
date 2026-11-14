@@ -13,7 +13,6 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.sql.Types;
 import java.util.Arrays;
 import java.util.Collection;
@@ -202,17 +201,11 @@ public class OrgHierarchyRepository {
             (rs, rowNum) -> new OrgHierarchyDtoWithDepth(mapRow(rs, rowNum), rs.getInt(Constants.DEPTH));
 
     private static OrgHierarchyDto mapRow(ResultSet rs, int rowNum) throws SQLException {
-        Timestamp createdAt = rs.getTimestamp(Constants.CREATED_AT);
-        Timestamp updatedAt = rs.getTimestamp(Constants.UPDATED_AT);
         return new OrgHierarchyDto(
                 rs.getString(Constants.ID),
                 rs.getString(Constants.NAME),
                 rs.getString(Constants.PARENT_ID),
                 rs.getBoolean(Constants.IDLE),
-                rs.getInt(Constants.CHILD_COUNT),
-                createdAt == null ? null : createdAt.toInstant(),
-                rs.getString(Constants.CREATED_BY),
-                updatedAt == null ? null : updatedAt.toInstant(),
-                rs.getString(Constants.UPDATED_BY));
+                rs.getInt(Constants.CHILD_COUNT));
     }
 }

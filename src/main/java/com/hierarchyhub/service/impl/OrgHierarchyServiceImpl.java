@@ -1,6 +1,7 @@
 package com.hierarchyhub.service.impl;
 
 import com.hierarchyhub.dto.Constants;
+import com.hierarchyhub.config.ExternalServiceProperties;
 import com.hierarchyhub.config.OrgHierarchyTransactionConfig;
 import com.hierarchyhub.dto.ApiRequest;
 import com.hierarchyhub.dto.AssociationRef;
@@ -24,6 +25,7 @@ import com.hierarchyhub.model.HierarchyLevelRecord;
 import com.hierarchyhub.model.OrganisationRecord;
 import com.hierarchyhub.model.OrgHierarchyDto;
 import com.hierarchyhub.model.OrgHierarchyDtoWithDepth;
+import com.hierarchyhub.model.OrgDataRecord;
 import com.hierarchyhub.repository.OrgHierarchyRepository;
 import com.hierarchyhub.service.HierarchyEventPublisher;
 import com.hierarchyhub.service.OrgHierarchyLevelService;
@@ -31,6 +33,8 @@ import com.hierarchyhub.service.OrgHierarchyService;
 import com.hierarchyhub.util.AppUtil;
 import com.hierarchyhub.util.AuthUtils;
 import com.hierarchyhub.util.CassandraUtils;
+import com.hierarchyhub.util.ElasticsearchUtil;
+import com.hierarchyhub.util.RedisCache;
 import com.hierarchyhub.validation.OrgHierarchyValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,6 +57,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class OrgHierarchyServiceImpl implements OrgHierarchyService {
@@ -65,11 +70,18 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
     private final CassandraUtils cassandraUtils;
     private final HierarchyEventPublisher hierarchyEventPublisher;
     private final OrgHierarchyLevelService orgHierarchyLevelService;
+    private final RedisCache redisCache;
+    private final ElasticsearchUtil elasticsearchUtil;
+    private final ExternalServiceProperties externalServiceProperties;
     private final int maxDepth;
+
+    @Value("${org-hierarchy.bulk.upload.master-data.cache-ttl-hours}")
+    private long masterDataCacheTtlHours;
 
     public OrgHierarchyServiceImpl(OrgHierarchyRepository orgHierarchyRepository, OrgHierarchyValidator orgHierarchyValidator,
                                     AuthUtils authUtils, CassandraUtils cassandraUtils, HierarchyEventPublisher hierarchyEventPublisher,
-                                    OrgHierarchyLevelService orgHierarchyLevelService,
+                                    OrgHierarchyLevelService orgHierarchyLevelService, RedisCache redisCache,
+                                    ElasticsearchUtil elasticsearchUtil, ExternalServiceProperties externalServiceProperties,
                                     @Value("${org-hierarchy.max-depth}") int maxDepth) {
         this.orgHierarchyRepository = orgHierarchyRepository;
         this.orgHierarchyValidator = orgHierarchyValidator;
@@ -77,6 +89,9 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
         this.cassandraUtils = cassandraUtils;
         this.hierarchyEventPublisher = hierarchyEventPublisher;
         this.orgHierarchyLevelService = orgHierarchyLevelService;
+        this.redisCache = redisCache;
+        this.elasticsearchUtil = elasticsearchUtil;
+        this.externalServiceProperties = externalServiceProperties;
         this.maxDepth = maxDepth;
     }
 
@@ -140,7 +155,7 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
         // Persist database updates in batch - at most one insert batch, one update batch, one counter update.
         persistBatchChildLinks(parentOrgId, userId, newChildIdsToInsert, newChildNamesToInsert, existingChildIdsToUpdate);
 
-        logBatchLinkSuccessSummary(parentOrgId, succeededChildOrganisationIds, failureErrors.size());
+        logBatchLinkSummary(parentOrgId, succeededChildOrganisationIds, failureErrors);
 
         List<HierarchyEvent> linkEventsToPublish = new ArrayList<>(succeededChildOrganisationIds.size());
         for (String childId : succeededChildOrganisationIds) {
@@ -181,9 +196,17 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
         }
     }
 
-    private void logBatchLinkSuccessSummary(String parentId, List<String> succeededChildIds, int failedCount) {
+    /** Logs the outcome summary always, plus every individual failure reason (childOrgId/err/errmsg) at WARN when
+     *  there are any - otherwise a bulk-link job's per-row validation failures are visible only inside the result
+     *  workbook's Error column, never in the application log, making a failed batch impossible to diagnose from
+     *  logs alone. */
+    private void logBatchLinkSummary(String parentId, List<String> succeededChildIds, List<OrgLinkErrorDetail> failureErrors) {
         log.info("Batch link completed: parentId={}, attachedChildCount={}, succeededChildIds={}, failedCount={}",
-                parentId, succeededChildIds.size(), succeededChildIds, failedCount);
+                parentId, succeededChildIds.size(), succeededChildIds, failureErrors.size());
+        for (OrgLinkErrorDetail failure : failureErrors) {
+            log.warn("Batch link failed for childOrgId={} under parentId={}: err={}, errmsg={}",
+                    failure.getChildOrgId(), parentId, failure.getErr(), failure.getErrmsg());
+        }
     }
 
     private ApiResponse buildLinkApiResponse(int totalCount, int successCount, List<OrgLinkErrorDetail> failureErrors) {
@@ -424,6 +447,50 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
                 levelRequired ? orgHierarchyLevelService.maxLevelIn(tree) : null,
                 levelRequired ? Constants.MAX_ALLOWED_LEVEL : null);
         return versionedResponse(Constants.API_HIERARCHY, result);
+    }
+
+    @Override
+    public List<OrgDataRecord> getMasterData(String rootOrgId) {
+        String cacheKey = Constants.ORG_MASTER_DATA_CACHE_KEY_PREFIX + rootOrgId;
+        List<Map<String, Object>> cachedRows = redisCache.getList(cacheKey);
+        if (cachedRows != null) {
+            log.debug("Master-data cache hit for rootOrgId={}", rootOrgId);
+            return toMasterDataRecords(cachedRows);
+        }
+
+        List<Map<String, Object>> fetchedRows = new ArrayList<>(fetchActiveOrgsUnderRoot(rootOrgId));
+        fetchedRows.add(0, rootOrgRow(rootOrgId));
+        redisCache.setWithTtl(cacheKey, fetchedRows, masterDataCacheTtlHours, TimeUnit.HOURS);
+        return toMasterDataRecords(fetchedRows);
+    }
+
+    private List<Map<String, Object>> fetchActiveOrgsUnderRoot(String rootOrgId) {
+
+        Map<String, Object> termFilters = Map.of(
+                Constants.MINISTRY_OR_STATE_ID + Constants.RAW_FIELD_SUFFIX, rootOrgId.toLowerCase(),
+                Constants.STATUS, Constants.ACTIVE_STATUS);
+        return elasticsearchUtil.scrollSearch(externalServiceProperties.getElasticsearchIndexAlias(), termFilters,
+                externalServiceProperties.getElasticsearchScrollPageSize(), externalServiceProperties.getElasticsearchScrollKeepAliveMinutes());
+    }
+
+    private Map<String, Object> rootOrgRow(String rootOrgId) {
+        OrganisationRecord rootOrganisationRecord = cassandraUtils.fetchBatchOrganisationsFromTable(List.of(rootOrgId)).get(rootOrgId);
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put(Constants.ID, rootOrgId);
+        row.put(Constants.ORG_NAME, rootOrganisationRecord == null ? rootOrgId : nameOrId(rootOrganisationRecord));
+        return row;
+    }
+
+    private static List<OrgDataRecord> toMasterDataRecords(List<Map<String, Object>> rows) {
+        List<OrgDataRecord> records = new ArrayList<>(rows.size());
+        for (Map<String, Object> row : rows) {
+            Object id = row.get(Constants.ID);
+            Object name = row.get(Constants.ORG_NAME);
+            if (id != null) {
+                records.add(new OrgDataRecord(String.valueOf(id), name == null ? "" : String.valueOf(name)));
+            }
+        }
+        return records;
     }
 
     private OrgTreeNode buildTree(OrgHierarchyDto node, Map<String, List<OrgHierarchyDto>> childrenByParent, Integer depthLimit,

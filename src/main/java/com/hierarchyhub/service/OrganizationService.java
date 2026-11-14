@@ -11,7 +11,7 @@ import com.hierarchyhub.model.ApiResponse;
 import com.hierarchyhub.model.Organization;
 import com.hierarchyhub.model.OrganizationDTO;
 import com.hierarchyhub.repository.OrganizationRepository;
-import com.hierarchyhub.util.SimpleRedisCache;
+import com.hierarchyhub.util.RedisCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,7 +40,7 @@ public class OrganizationService {
     ObjectMapper objectMapper;
 
     @Autowired
-    SimpleRedisCache redisCache;
+    RedisCache redisCache;
 
     public Organization addOrganization(OrganizationRequest request) {
 

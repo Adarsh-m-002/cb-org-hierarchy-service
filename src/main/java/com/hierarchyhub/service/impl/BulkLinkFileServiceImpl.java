@@ -23,6 +23,10 @@ import com.hierarchyhub.util.CloudStorageService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -44,7 +48,7 @@ import java.util.UUID;
 public class BulkLinkFileServiceImpl implements BulkLinkFileService {
 
     private static final Logger log = LoggerFactory.getLogger(BulkLinkFileServiceImpl.class);
-    private static final DateTimeFormatter TIMESTAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXX").withZone(ZoneOffset.UTC);
+    private static final DateTimeFormatter TIMESTAMP = DateTimeFormatter.ofPattern(Constants.BULK_LINK_DATE_CREATED_ON_FORMAT).withZone(ZoneOffset.UTC);
 
     private final AuthUtils authUtils;
     private final CloudStorageService cloudStorageService;
@@ -74,14 +78,15 @@ public class BulkLinkFileServiceImpl implements BulkLinkFileService {
     }
 
     @Override
-    public byte[] buildSampleWorkbook(String rootOrgId, String accessToken) {
+    public ResponseEntity<ByteArrayResource> sampleFileResponse(String rootOrgId, String accessToken) {
         authUtils.validateCallerAuthenticationAndFetchUserId(accessToken);
         List<OrgDataRecord> masterData = orgHierarchyService.getMasterData(rootOrgId);
-        return ExcelUtils.buildSampleWorkbook(masterData);
+        byte[] workbook = ExcelUtils.buildSampleWorkbook(masterData);
+        return fileResponse(workbook, Constants.BULK_LINK_SAMPLE_FILE_NAME);
     }
 
     @Override
-    public byte[] buildExportWorkbook(String rootOrgId, String accessToken) {
+    public ResponseEntity<ByteArrayResource> exportFileResponse(String rootOrgId, String accessToken) {
         authUtils.validateCallerAuthenticationAndFetchUserId(accessToken);
         List<OrgHierarchyDto> subtree = orgHierarchyRepository.findSubtree(rootOrgId);
         if (subtree.isEmpty()) {
@@ -111,7 +116,15 @@ public class BulkLinkFileServiceImpl implements BulkLinkFileService {
         });
 
         List<String> levelHeaderNames = levelHeaderNames(rootOrgId);
-        return ExcelUtils.buildExportWorkbook(levelHeaderNames, leafPathCells);
+        byte[] workbook = ExcelUtils.buildExportWorkbook(levelHeaderNames, leafPathCells);
+        return fileResponse(workbook, Constants.BULK_LINK_EXPORT_FILE_NAME_PREFIX + rootOrgId + Constants.XLSX_FILE_EXTENSION);
+    }
+
+    private static ResponseEntity<ByteArrayResource> fileResponse(byte[] content, String fileName) {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, String.format(Constants.CONTENT_DISPOSITION_ATTACHMENT_FILENAME_FORMAT, fileName))
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(new ByteArrayResource(content));
     }
 
     /** Every configured level's own name (level 1 first) - always the full configured set, same as sunbird-cb-ext always showing every framework category regardless of how deep any one branch actually goes. */
@@ -125,7 +138,7 @@ public class BulkLinkFileServiceImpl implements BulkLinkFileService {
     }
 
     private static String namedCell(String name, String orgId) {
-        return (name == null ? "" : name) + "<" + orgId + ">";
+        return (name == null ? "" : name) + Constants.ANGLE_BRACKET_OPEN + orgId + Constants.ANGLE_BRACKET_CLOSE;
     }
 
     @Override
@@ -140,7 +153,7 @@ public class BulkLinkFileServiceImpl implements BulkLinkFileService {
 
         byte[] fileBytes = bytesOf(file);
         ParsedBulkLinkSheet parsedSheet = ExcelUtils.read(new ByteArrayInputStream(fileBytes));
-        int totalRows = parsedSheet.rows().size() + parsedSheet.rowFailures().size();
+        int totalRows = parsedSheet.rows().size() + parsedSheet.rowFailures().size() + parsedSheet.duplicateChildRows().size();
         if (totalRows > maxRows) {
             throw new ServiceException(ErrorCode.INVALID_REQUEST,
                     "At most " + maxRows + " rows per file; split it into smaller files");
@@ -157,7 +170,7 @@ public class BulkLinkFileServiceImpl implements BulkLinkFileService {
         kafkaProducer.pushWithKey(bulkUploadTopic,
                 new BulkLinkUploadEvent(rootOrgId, identifier, fileName, objectKey, userId), rootOrgId);
         log.info("bulkLink initiated: identifier={}, fileName={}, rootOrgId={}, totalRows={}, parseRowFailures={}, duplicateChildRowsSkipped={}",
-                identifier, fileName, rootOrgId, totalRows, parsedSheet.rowFailures().size(), parsedSheet.duplicateChildRowsSkipped());
+                identifier, fileName, rootOrgId, totalRows, parsedSheet.rowFailures().size(), parsedSheet.duplicateChildRows().size());
 
         BulkUploadJobResponse response = new BulkUploadJobResponse(identifier, fileName, userId, dateCreatedOn, rootOrgId, Constants.INITIATED);
         return AppUtil.versionedResponse(Constants.API_BULK_LINK, response);

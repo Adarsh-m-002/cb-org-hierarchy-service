@@ -1,6 +1,7 @@
 package com.hierarchyhub.util;
 
 import com.hierarchyhub.config.ExternalServiceProperties;
+import com.hierarchyhub.dto.Constants;
 import com.hierarchyhub.exception.ErrorCode;
 import com.hierarchyhub.exception.ServiceException;
 import jakarta.annotation.PostConstruct;
@@ -41,7 +42,7 @@ public class CloudStorageService {
     public String upload(byte[] content, String objectKey) {
         Path tempFile = null;
         try {
-            tempFile = Files.createTempFile("bulk-link-upload-", ".xlsx");
+            tempFile = Files.createTempFile(Constants.BULK_LINK_UPLOAD_TEMP_FILE_PREFIX, Constants.XLSX_FILE_EXTENSION);
             Files.write(tempFile, content);
             String url = storageService.upload(externalServiceProperties.getBulkUploadContainerName(), tempFile.toAbsolutePath().toString(),
                     fullCloudKey(objectKey), Option.apply(false), Option.apply(1), Option.apply(5), Option.empty());
@@ -60,7 +61,7 @@ public class CloudStorageService {
     public byte[] download(String objectKey) {
         Path tempDir = null;
         try {
-            tempDir = Files.createTempDirectory("bulk-link-download-");
+            tempDir = Files.createTempDirectory(Constants.BULK_LINK_DOWNLOAD_TEMP_DIR_PREFIX);
             log.debug("bulkLink cloud storage download starting: container={}, objectKey={}",
                     externalServiceProperties.getBulkUploadContainerName(), objectKey);
 

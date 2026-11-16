@@ -5,5 +5,5 @@ import com.hierarchyhub.dto.BulkLinkRowFailure;
 
 import java.util.List;
 
-public record ParsedBulkLinkSheet(List<BulkLinkRow> rows, List<BulkLinkRowFailure> rowFailures, int duplicateChildRowsSkipped) {
+public record ParsedBulkLinkSheet(List<BulkLinkRow> rows, List<BulkLinkRowFailure> rowFailures, List<BulkLinkRowFailure> duplicateChildRows) {
 }

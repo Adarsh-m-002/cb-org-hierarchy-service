@@ -13,7 +13,6 @@ import com.hierarchyhub.service.BulkLinkFileService;
 import com.hierarchyhub.service.OrgHierarchyLevelService;
 import com.hierarchyhub.service.OrgHierarchyService;
 import org.springframework.core.io.ByteArrayResource;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -92,15 +91,13 @@ public class OrgHierarchyController {
     @GetMapping("/bulk/link/{rootOrgId}/sample")
     public ResponseEntity<ByteArrayResource> bulkLinkSample(@PathVariable String rootOrgId,
             @RequestHeader(Constants.AUTH_TOKEN_HEADER) String accessToken) {
-        byte[] workbook = bulkLinkFileService.buildSampleWorkbook(rootOrgId, accessToken);
-        return fileResponse(workbook, Constants.BULK_LINK_SAMPLE_FILE_NAME);
+        return bulkLinkFileService.sampleFileResponse(rootOrgId, accessToken);
     }
 
     @GetMapping("/bulk/link/{rootOrgId}/export")
     public ResponseEntity<ByteArrayResource> bulkLinkExport(@PathVariable String rootOrgId,
             @RequestHeader(Constants.AUTH_TOKEN_HEADER) String accessToken) {
-        byte[] workbook = bulkLinkFileService.buildExportWorkbook(rootOrgId, accessToken);
-        return fileResponse(workbook, Constants.BULK_LINK_EXPORT_FILE_NAME_PREFIX + rootOrgId + ".xlsx");
+        return bulkLinkFileService.exportFileResponse(rootOrgId, accessToken);
     }
 
     @PatchMapping("/levels/{rootOrgId}")
@@ -116,12 +113,5 @@ public class OrgHierarchyController {
                                                    @RequestHeader(Constants.AUTH_TOKEN_HEADER) String accessToken) {
         ApiResponse response = orgHierarchyLevelService.readHierarchyLevels(rootOrgId, accessToken);
         return new ResponseEntity<>(response, response.getResponseCode());
-    }
-
-    private static ResponseEntity<ByteArrayResource> fileResponse(byte[] content, String fileName) {
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(new ByteArrayResource(content));
     }
 }

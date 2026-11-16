@@ -75,8 +75,8 @@ public final class ExcelUtils {
 
         List<BulkLinkRow> rows = new ArrayList<>();
         List<BulkLinkRowFailure> rowFailures = new ArrayList<>();
-        Map<String, Boolean> seenChildren = new LinkedHashMap<>();
-        int duplicatesSkipped = 0;
+        List<BulkLinkRowFailure> duplicateChildRows = new ArrayList<>();
+        Map<String, Integer> firstRowNumberByChildId = new LinkedHashMap<>();
 
         for (int r = header.getRowNum() + 1; r <= sheet.getLastRowNum(); r++) {
             Row row = sheet.getRow(r);
@@ -101,13 +101,17 @@ public final class ExcelUtils {
                                 : Constants.BULK_LINK_CHILD_ORGANIZATION_COLUMN + " is blank"));
                 continue;
             }
-            if (seenChildren.put(childOrgId, Boolean.TRUE) != null) {
-                duplicatesSkipped++; // childOrgId must be distinct; first occurrence wins, parentOrgId may repeat freely
+            Integer firstRowNumber = firstRowNumberByChildId.putIfAbsent(childOrgId, rowNumber);
+            if (firstRowNumber != null) {
+                // childOrgId must be distinct; first occurrence wins, parentOrgId may repeat freely - still
+                // annotated (as "Skipped", not "Failed") in the result workbook, not silently dropped
+                duplicateChildRows.add(new BulkLinkRowFailure(rowNumber, parentOrgId, childOrgId,
+                        Constants.BULK_LINK_CHILD_ORGANIZATION_COLUMN + " already processed on row " + firstRowNumber));
                 continue;
             }
             rows.add(new BulkLinkRow(rowNumber, parentOrgId, childOrgId));
         }
-        return new ParsedBulkLinkSheet(rows, rowFailures, duplicatesSkipped);
+        return new ParsedBulkLinkSheet(rows, rowFailures, duplicateChildRows);
     }
 
     private static Map<String, Integer> headerColumns(Row header, DataFormatter formatter) {
@@ -241,7 +245,7 @@ public final class ExcelUtils {
     }
 
     private static String namedCell(String name, String orgId) {
-        return (name == null ? "" : name) + "<" + orgId + ">";
+        return (name == null ? "" : name) + Constants.ANGLE_BRACKET_OPEN + orgId + Constants.ANGLE_BRACKET_CLOSE;
     }
 
     private static byte[] toBytes(XSSFWorkbook workbook) throws IOException {

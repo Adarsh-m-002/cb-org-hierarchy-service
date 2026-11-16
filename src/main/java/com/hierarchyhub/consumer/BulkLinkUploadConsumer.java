@@ -89,6 +89,12 @@ public class BulkLinkUploadConsumer {
             statusByRowNumber.put(parseFailure.getRowNumber(), Constants.FAILED);
             errorByRowNumber.put(parseFailure.getRowNumber(), parseFailure.getReason());
         }
+        // Duplicate childOrganization rows are intentionally skipped, not failed - still annotated here so every
+        // row in the downloaded result file has an explanation, none left blank with no indication of why.
+        for (BulkLinkRowFailure duplicate : parsedSheet.duplicateChildRows()) {
+            statusByRowNumber.put(duplicate.getRowNumber(), Constants.ROW_STATUS_SKIPPED);
+            errorByRowNumber.put(duplicate.getRowNumber(), duplicate.getReason());
+        }
 
         int succeededRows = 0;
         int failedRows = parsedSheet.rowFailures().size();
@@ -105,7 +111,7 @@ public class BulkLinkUploadConsumer {
             }
         }
 
-        int totalRows = parsedSheet.rows().size() + parsedSheet.rowFailures().size();
+        int totalRows = parsedSheet.rows().size() + parsedSheet.rowFailures().size() + parsedSheet.duplicateChildRows().size();
         byte[] resultBytes = ExcelUtils.annotateResultWorkbook(originalBytes, statusByRowNumber, errorByRowNumber);
         String resultObjectKey = cloudStorageService.newObjectKey(Constants.RESULT_FILE_NAME_PREFIX + event.getFileName());
         cloudStorageService.upload(resultBytes, resultObjectKey);

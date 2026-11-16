@@ -44,7 +44,10 @@ public class BulkLinkSheetReaderTest {
 
         assertEquals(2, parsed.rows().size());
         assertEquals(0, parsed.rowFailures().size());
-        assertEquals(1, parsed.duplicateChildRowsSkipped());
+        assertEquals(1, parsed.duplicateChildRows().size());
+        assertEquals(Integer.valueOf(4), parsed.duplicateChildRows().get(0).getRowNumber());
+        assertEquals("C1", parsed.duplicateChildRows().get(0).getChildOrgId());
+        assertTrue(parsed.duplicateChildRows().get(0).getReason().contains("already processed on row 2"));
         BulkLinkRow first = parsed.rows().get(0);
         assertEquals("P1", first.getParentOrgId());
         assertEquals("C1", first.getChildOrgId());

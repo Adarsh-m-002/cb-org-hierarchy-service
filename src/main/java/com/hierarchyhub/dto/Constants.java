@@ -171,6 +171,13 @@ public class Constants {
     public static final String BULK_LINK_MASTER_DATA_SHEET_NAME = "masterData";
     public static final String BULK_LINK_ORGANIZATION_NAME_COLUMN = "organizationName";
     public static final int BULK_LINK_MASTER_DATA_MAX_ROWS = 1000;
+    public static final String XLSX_FILE_EXTENSION = ".xlsx";
+    public static final String CONTENT_DISPOSITION_ATTACHMENT_FILENAME_FORMAT = "attachment; filename=\"%s\"";
+    public static final String BULK_LINK_UPLOAD_TEMP_FILE_PREFIX = "bulk-link-upload-";
+    public static final String BULK_LINK_DOWNLOAD_TEMP_DIR_PREFIX = "bulk-link-download-";
+    public static final String ANGLE_BRACKET_OPEN = "<";
+    public static final String ANGLE_BRACKET_CLOSE = ">";
+    public static final String BULK_LINK_DATE_CREATED_ON_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSSXX";
     public static final String CASSANDRA_BULK_UPLOAD_TABLE = "org_hierarchy_mapping_bulk_upload";
     public static final String ROOT_ORG_ID_LOWER = "rootorgid";
     public static final String IDENTIFIER = "identifier";
@@ -209,6 +216,7 @@ public class Constants {
     public static final String SCROLL_KEEP_ALIVE_UNIT_MINUTES = "m";
     public static final String RAW_FIELD_SUFFIX = ".raw";
     public static final String ROW_STATUS_SUCCESS = "Success";
+    public static final String ROW_STATUS_SKIPPED = "Skipped";
     public static final String RESULT_SHEET_STATUS_COLUMN = "Status";
     public static final String RESULT_SHEET_ERROR_COLUMN = "Error";
     public static final String SYSTEM_ERROR_PREFIX = "System error: ";

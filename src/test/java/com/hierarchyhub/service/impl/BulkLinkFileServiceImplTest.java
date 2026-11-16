@@ -18,6 +18,11 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -25,6 +30,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -61,25 +67,28 @@ public class BulkLinkFileServiceImplTest {
     }
 
     @Test
-    public void buildSampleWorkbookDelegatesToMasterDataAndProducesAWorkbook() {
+    public void sampleFileResponseDelegatesToMasterDataAndProducesADownloadableWorkbook() {
         when(orgHierarchyService.getMasterData("root-1")).thenReturn(List.of(new OrgDataRecord("C1", "Org One")));
 
-        byte[] workbook = service.buildSampleWorkbook("root-1", "token");
+        ResponseEntity<ByteArrayResource> response = service.sampleFileResponse("root-1", "token");
 
         verify(authUtils).validateCallerAuthenticationAndFetchUserId("token");
         verify(orgHierarchyService).getMasterData("root-1");
-        assertTrue(workbook.length > 0);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals(MediaType.APPLICATION_OCTET_STREAM, response.getHeaders().getContentType());
+        assertTrue(response.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION).contains(Constants.BULK_LINK_SAMPLE_FILE_NAME));
+        assertTrue(Objects.requireNonNull(response.getBody()).contentLength() > 0);
     }
 
     @Test
-    public void buildExportWorkbookRejectsAnUnknownRoot() {
+    public void exportFileResponseRejectsAnUnknownRoot() {
         when(orgHierarchyRepository.findSubtree("missing")).thenReturn(List.of());
 
-        assertThrows(ServiceException.class, () -> service.buildExportWorkbook("missing", "token"));
+        assertThrows(ServiceException.class, () -> service.exportFileResponse("missing", "token"));
     }
 
     @Test
-    public void buildExportWorkbookWalksLeavesAndUsesTheConfiguredLevelNames() {
+    public void exportFileResponseWalksLeavesAndUsesTheConfiguredLevelNames() {
         OrgHierarchyDto root = new OrgHierarchyDto("root-1", "Root Org", null, false, 1);
         OrgHierarchyDto leaf = new OrgHierarchyDto("C1", "Child One", "root-1", false, 0);
         when(orgHierarchyRepository.findSubtree("root-1")).thenReturn(List.of(root, leaf));
@@ -92,10 +101,12 @@ public class BulkLinkFileServiceImplTest {
         when(orgHierarchyLevelService.levelMapFor("root-1")).thenReturn(
                 Map.of(1, new HierarchyLevelRecord(1, "Ministry", "desc")));
 
-        byte[] workbook = service.buildExportWorkbook("root-1", "token");
+        ResponseEntity<ByteArrayResource> response = service.exportFileResponse("root-1", "token");
 
         verify(authUtils).validateCallerAuthenticationAndFetchUserId("token");
-        assertTrue(workbook.length > 0);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertTrue(response.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION).contains("root-1"));
+        assertTrue(Objects.requireNonNull(response.getBody()).contentLength() > 0);
     }
 
     @Test

@@ -10,18 +10,24 @@ import com.hierarchyhub.exception.ServiceException;
 import com.hierarchyhub.repository.BulkUploadCassandraRepository;
 import com.hierarchyhub.service.OrgHierarchyService;
 import com.hierarchyhub.util.CloudStorageService;
+import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -100,6 +106,24 @@ public class BulkLinkUploadConsumerTest {
     }
 
     @Test
+    public void duplicateChildRowsAreCountedAndAnnotatedAsSkippedNotAsFailures() throws IOException {
+        BulkLinkUploadEvent event = new BulkLinkUploadEvent("root-1", "job-1", "sheet.xlsx", "obj-1", "user-1");
+        when(cloudStorageService.download("obj-1")).thenReturn(sheetWithDuplicateRow("P1", "C1", "C1"));
+        when(orgHierarchyService.linkChildrenUnderParentBatch(eq("P1"), eq(List.of("C1")), eq("user-1")))
+                .thenReturn(new BatchLinkExecutionResult(List.of("C1"), List.of()));
+        ArgumentCaptor<byte[]> resultBytesCaptor = ArgumentCaptor.forClass(byte[].class);
+
+        consumer.onBulkLinkUploadEvent(toJson(event));
+
+        // totalRows=2 (one real row + one duplicate), succeededRows=1, failedRows=0 - the duplicate is "Skipped",
+        // not a failure, so it never flips the job to FAILED
+        verify(bulkUploadCassandraRepository).markTerminalWithResultFile(
+                eq("root-1"), eq("job-1"), eq(Constants.SUCCESSFUL), eq(2), eq(1), eq(0), anyString());
+        verify(cloudStorageService).upload(resultBytesCaptor.capture(), anyString());
+        assertEquals(Constants.ROW_STATUS_SKIPPED, statusCellOfSecondDataRow(resultBytesCaptor.getValue()));
+    }
+
+    @Test
     public void aChunkThrowingAServiceExceptionFailsJustThatChunksRowsNotTheWholeJob() throws IOException {
         BulkLinkUploadEvent event = new BulkLinkUploadEvent("root-1", "job-1", "sheet.xlsx", "obj-1", "user-1");
         when(cloudStorageService.download("obj-1")).thenReturn(sheetWithRows("P1", "C1", "C2"));
@@ -156,6 +180,22 @@ public class BulkLinkUploadConsumerTest {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             workbook.write(out);
             return out.toByteArray();
+        }
+    }
+
+    /** Same shape as {@link #sheetWithRows}, but every child id after the first is a deliberate duplicate of it. */
+    private static byte[] sheetWithDuplicateRow(String parentId, String... childIds) throws IOException {
+        return sheetWithRows(parentId, childIds);
+    }
+
+    /** The second data row's Status cell (sheet row index 2: header=0, first data row=1, second data row=2) from
+     * an annotated result workbook - the column right after the header's last original column. */
+    private static String statusCellOfSecondDataRow(byte[] annotatedWorkbook) throws IOException {
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(annotatedWorkbook))) {
+            Sheet sheet = workbook.getSheet("referenceSheet");
+            Row header = sheet.getRow(0);
+            int statusCol = header.getLastCellNum() - 2; // "Status" then "Error" were appended after the 2 original columns
+            return new DataFormatter().formatCellValue(sheet.getRow(2).getCell(statusCol));
         }
     }
 }

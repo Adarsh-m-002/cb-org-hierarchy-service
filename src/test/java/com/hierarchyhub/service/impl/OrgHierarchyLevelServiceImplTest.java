@@ -20,7 +20,6 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -88,7 +87,7 @@ public class OrgHierarchyLevelServiceImplTest {
     @Test
     public void updateHierarchyLevelsRejectsANonL0Org() {
         when(orgHierarchyRepository.findById("root-1")).thenReturn(Optional.of(
-                new OrgHierarchyDto("root-1", "Dept", "some-parent", false, 0, Instant.now(), "user-1", Instant.now(), "user-1")));
+                new OrgHierarchyDto("root-1", "Dept", "some-parent", false, 0)));
         ApiRequest<UpdateHierarchyLevelsRequestBody> request = requestWith(new HierarchyLevelItem(1, "Ministry", "desc"));
 
         assertThrows(ServiceException.class, () -> service.updateHierarchyLevels("root-1", request, "token"));
@@ -97,7 +96,7 @@ public class OrgHierarchyLevelServiceImplTest {
     @Test
     public void updateHierarchyLevelsRejectsAnIdleOrg() {
         when(orgHierarchyRepository.findById("root-1")).thenReturn(Optional.of(
-                new OrgHierarchyDto("root-1", "Root Org", null, true, 0, Instant.now(), "user-1", Instant.now(), "user-1")));
+                new OrgHierarchyDto("root-1", "Root Org", null, true, 0)));
         ApiRequest<UpdateHierarchyLevelsRequestBody> request = requestWith(new HierarchyLevelItem(1, "Ministry", "desc"));
 
         assertThrows(ServiceException.class, () -> service.updateHierarchyLevels("root-1", request, "token"));
@@ -150,7 +149,7 @@ public class OrgHierarchyLevelServiceImplTest {
     @Test
     public void readHierarchyLevelsRejectsANonL0Org() {
         when(orgHierarchyRepository.findById("root-1")).thenReturn(Optional.of(
-                new OrgHierarchyDto("root-1", "Dept", "some-parent", false, 0, Instant.now(), "user-1", Instant.now(), "user-1")));
+                new OrgHierarchyDto("root-1", "Dept", "some-parent", false, 0)));
 
         assertThrows(ServiceException.class, () -> service.readHierarchyLevels("root-1", "token"));
     }
@@ -220,7 +219,7 @@ public class OrgHierarchyLevelServiceImplTest {
     }
 
     private static OrgHierarchyDto rootNode() {
-        return new OrgHierarchyDto("root-1", "Root Org", null, false, 1, Instant.now(), "user-1", Instant.now(), "user-1");
+        return new OrgHierarchyDto("root-1", "Root Org", null, false, 1);
     }
 
     private static OrganisationRecord ministryOrganisationRecord() {

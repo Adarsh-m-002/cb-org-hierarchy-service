@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.connection.RedisStringCommands.SetOption;
+import org.springframework.data.redis.core.types.Expiration;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -11,21 +13,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-/**
- * A plain string-keyed cache over {@link RedisConnection} (not {@code RedisTemplate}/{@code StringRedisTemplate} -
- * either one's own constructor unconditionally builds an {@code ObjectHashMapper}, which needs a newer
- * spring-data-commons than this app is pinned to for the legacy v1 Neo4j module; {@code RedisConnection} is a lower
- * level than that and is unaffected). Values are JSON (via the app's existing {@link ObjectMapper}), not Java
- * serialization - a deliberate, low-risk format change since this is only ever a derived cache, never the source of
- * truth: an empty cache after this change just means the next read recomputes instead of hitting a stale entry.
- */
 @Component
-public class SimpleRedisCache {
+public class RedisCache {
 
     private final RedisConnectionFactory connectionFactory;
     private final ObjectMapper objectMapper;
 
-    public SimpleRedisCache(RedisConnectionFactory connectionFactory, ObjectMapper objectMapper) {
+    public RedisCache(RedisConnectionFactory connectionFactory, ObjectMapper objectMapper) {
         this.connectionFactory = connectionFactory;
         this.objectMapper = objectMapper;
     }
@@ -53,8 +47,7 @@ public class SimpleRedisCache {
     public void setWithTtl(String key, Object value, long timeout, TimeUnit unit) {
         try (RedisConnection connection = connectionFactory.getConnection()) {
             byte[] serialized = objectMapper.writeValueAsBytes(value);
-            connection.set(bytes(key), serialized);
-            connection.expire(bytes(key), unit.toSeconds(timeout));
+            connection.set(bytes(key), serialized, Expiration.from(timeout, unit), SetOption.upsert());
         } catch (Exception e) {
             // a cache write failing should never fail the request it's caching for
         }

@@ -12,6 +12,7 @@ import com.hierarchyhub.model.ApiResponse;
 import com.hierarchyhub.service.BulkLinkFileService;
 import com.hierarchyhub.service.OrgHierarchyLevelService;
 import com.hierarchyhub.service.OrgHierarchyService;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -85,6 +86,18 @@ public class OrgHierarchyController {
             @PathVariable("rootOrgId") String rootOrgId, @RequestHeader(Constants.AUTH_TOKEN_HEADER) String accessToken) {
         ApiResponse response = bulkLinkFileService.initiate(file, rootOrgId, accessToken);
         return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    @GetMapping("/bulk/link/{rootOrgId}/sample")
+    public ResponseEntity<ByteArrayResource> bulkLinkSample(@PathVariable String rootOrgId,
+            @RequestHeader(Constants.AUTH_TOKEN_HEADER) String accessToken) {
+        return bulkLinkFileService.sampleFileResponse(rootOrgId, accessToken);
+    }
+
+    @GetMapping("/bulk/link/{rootOrgId}/export")
+    public ResponseEntity<ByteArrayResource> bulkLinkExport(@PathVariable String rootOrgId,
+            @RequestHeader(Constants.AUTH_TOKEN_HEADER) String accessToken) {
+        return bulkLinkFileService.exportFileResponse(rootOrgId, accessToken);
     }
 
     @PatchMapping("/levels/{rootOrgId}")

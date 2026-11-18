@@ -105,6 +105,30 @@ final class OrgHierarchySql {
             "WHERE (:queryExact IS NULL OR id = :queryExact OR lower(name) LIKE lower(:queryPattern) ESCAPE '\\') " +
             "ORDER BY lower(name), id LIMIT :limit OFFSET :offset";
 
+    /**
+     * Same shape as {@link #DESCENDANTS_PAGE_BY_OFFSET}, plus two things {@code /search} needs that no existing
+     * descendants query does: {@code :excludeOrganizationWithChildren} (nullable) prunes that one org and its whole subtree out
+     * of the recursion entirely (for the move-target-parent search, where the org being moved and everything under
+     * it must never appear as a candidate new parent), and {@code count(*) OVER()} reports the total matching row
+     * count across every page in this same round trip, so a caller doesn't need a second query just to paginate.
+     */
+    static final String DESCENDANTS_PAGE_WITH_COUNT =
+            "WITH RECURSIVE sub AS ( " +
+            "  SELECT " + SELECT_COLUMNS + ", 1 AS depth FROM " + TABLE_NAME + " WHERE parent_id = :orgId " +
+            "    AND (:excludeOrganizationWithChildren IS NULL OR id != :excludeOrganizationWithChildren) " +
+            "  UNION ALL " +
+            "  SELECT o.id, o.name, o.parent_id, o.idle, o.child_count, s.depth + 1 " +
+            "  FROM " + TABLE_NAME + " o JOIN sub s ON o.parent_id = s.id " +
+            "  WHERE s.depth < :depthLimit " +
+            "    AND (:excludeOrganizationWithChildren IS NULL OR o.id != :excludeOrganizationWithChildren) " +
+            ") SELECT " + SELECT_COLUMNS + ", depth, count(*) OVER() AS " + Constants.TOTAL_COUNT + " FROM sub " +
+            "WHERE (:queryExact IS NULL OR id = :queryExact OR lower(name) LIKE lower(:queryPattern) ESCAPE '\\') " +
+            "ORDER BY lower(name), id LIMIT :limit OFFSET :offset";
+
+    /** Of {@code :ids}, just the ones that are active mapped nodes right now - the real-time ACID guard behind the two-phase unmapped-orgs search (an Elasticsearch directory hit can lag a few seconds behind a just-completed link). */
+    static final String FIND_ACTIVE_IDS =
+            "SELECT id FROM " + TABLE_NAME + " WHERE id IN (:ids) AND idle = false";
+
     /** Count of every descendant of {@code id} (not including {@code id} itself), bounded by {@code maxDepth} hops. */
     static final String COUNT_DESCENDANTS =
             "WITH RECURSIVE sub(id, depth) AS ( " +

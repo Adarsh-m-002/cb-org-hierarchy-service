@@ -1,5 +1,6 @@
 package com.hierarchyhub.util;
 
+import com.hierarchyhub.dto.Constants;
 import com.hierarchyhub.model.ApiResponse;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -74,5 +75,15 @@ public final class AppUtil {
      */
     public static String likeContainsPattern(String raw) {
         return "%" + raw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
+    }
+
+    /** {@code page} if it's a valid 0-based index, otherwise {@link Constants#DEFAULT_PAGE} - shared by every paginated endpoint. */
+    public static int pageOrDefault(Integer page) {
+        return page != null && page >= 0 ? page : Constants.DEFAULT_PAGE;
+    }
+
+    /** {@code limit} clamped to {@link Constants#MAX_PAGE_SIZE} if valid, otherwise {@link Constants#DEFAULT_PAGE_SIZE} - shared by every paginated endpoint. */
+    public static int limitOrDefault(Integer limit) {
+        return limit != null && limit > 0 ? Math.min(limit, Constants.MAX_PAGE_SIZE) : Constants.DEFAULT_PAGE_SIZE;
     }
 }

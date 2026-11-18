@@ -159,6 +159,23 @@ public class Constants {
     public static final String ORGANIZATION_ID = "orgId";
     public static final String PARENT_PATH_ID_KEY = "parentPathId";
 
+    // generic search & pagination - reusable by any paginated endpoint, not just search/unmapped-orgs
+    public static final String API_HIERARCHY_SEARCH = "api.org.hierarchy.search";
+    public static final String API_HIERARCHY_UNMAPPED_ORGS = "api.org.hierarchy.unmapped.orgs";
+    public static final int DEFAULT_PAGE = 0;
+    public static final int DEFAULT_PAGE_SIZE = 50;
+    public static final int MAX_PAGE_SIZE = 200;
+    public static final String TOTAL_COUNT = "total_count";
+
+    // SQL named-parameter keys for OrgHierarchyRepository#findDescendantsPageWithCount - generic enough to be
+    // reused by any future descendants/search query that needs the same bind parameters
+    public static final String DEPTH_LIMIT = "depthLimit";
+    public static final String QUERY_EXACT = "queryExact";
+    public static final String QUERY_PATTERN = "queryPattern";
+    public static final String OFFSET = "offset";
+    public static final String LIMIT = "limit";
+    public static final String EXCLUDE_ORGANIZATION_WITH_CHILDREN = "excludeOrganizationWithChildren";
+
     // outbound HTTP calls to external Sunbird APIs (via the shared org.igot.common OutboundRequestHandlerServiceImpl)
     public static final String AUTHORIZATION_HEADER = "Authorization";
     public static final String X_AUTH_USER_HEADER = "x-authenticated-user-token";
@@ -212,9 +229,17 @@ public class Constants {
     public static final String QUERY = "query";
     public static final String BOOL = "bool";
     public static final String MUST = "must";
+    public static final String MUST_NOT = "must_not";
+    public static final String SHOULD = "should";
+    public static final String MINIMUM_SHOULD_MATCH = "minimum_should_match";
     public static final String TERM = "term";
+    public static final String EXISTS = "exists";
+    public static final String FIELD = "field";
+    public static final String MATCH_PHRASE_PREFIX = "match_phrase_prefix";
     public static final String SCROLL_KEEP_ALIVE_UNIT_MINUTES = "m";
     public static final String RAW_FIELD_SUFFIX = ".raw";
+    public static final String MINISTRY_OR_STATE_TYPE = "ministryOrStateType";
+    public static final String MINISTRY_OR_STATE_NAME = "ministryOrStateName";
     public static final String ROW_STATUS_SUCCESS = "Success";
     public static final String ROW_STATUS_SKIPPED = "Skipped";
     public static final String RESULT_SHEET_STATUS_COLUMN = "Status";

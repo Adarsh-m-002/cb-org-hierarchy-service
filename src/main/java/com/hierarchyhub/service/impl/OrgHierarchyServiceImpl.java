@@ -11,6 +11,8 @@ import com.hierarchyhub.dto.ChildOrgSummary;
 import com.hierarchyhub.dto.HierarchyEvent;
 import com.hierarchyhub.dto.HierarchyResponse;
 import com.hierarchyhub.dto.LinkOrgRequestBody;
+import com.hierarchyhub.dto.OrgHierarchySearchFilter;
+import com.hierarchyhub.dto.OrgHierarchySearchRequest;
 import com.hierarchyhub.dto.OrgLinkErrorDetail;
 import com.hierarchyhub.dto.MoveOrgRequestBody;
 import com.hierarchyhub.dto.MoveOrgResponse;
@@ -18,6 +20,8 @@ import com.hierarchyhub.dto.OrgTreeNode;
 import com.hierarchyhub.dto.ReadChildrenRequestBody;
 import com.hierarchyhub.dto.ReadChildrenResponse;
 import com.hierarchyhub.dto.UnlinkOrgRequestBody;
+import com.hierarchyhub.dto.UnmappedOrgsFilter;
+import com.hierarchyhub.dto.UnmappedOrgsRequest;
 import com.hierarchyhub.exception.ErrorCode;
 import com.hierarchyhub.exception.ServiceException;
 import com.hierarchyhub.model.ApiResponse;
@@ -25,8 +29,13 @@ import com.hierarchyhub.model.HierarchyLevelRecord;
 import com.hierarchyhub.model.OrganisationRecord;
 import com.hierarchyhub.model.OrgHierarchyDto;
 import com.hierarchyhub.model.OrgHierarchyDtoWithDepth;
+import com.hierarchyhub.model.OrgHierarchySearchDto;
 import com.hierarchyhub.model.OrgDataRecord;
+import com.hierarchyhub.model.PageWithCount;
+import com.hierarchyhub.model.PagedSearchResponse;
+import com.hierarchyhub.model.UnmappedOrgDto;
 import com.hierarchyhub.repository.OrgHierarchyRepository;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.hierarchyhub.service.HierarchyEventPublisher;
 import com.hierarchyhub.service.OrgHierarchyLevelService;
 import com.hierarchyhub.service.OrgHierarchyService;
@@ -50,11 +59,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
@@ -462,6 +473,138 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
         fetchedRows.add(0, rootOrgRow(rootOrgId));
         redisCache.setWithTtl(cacheKey, fetchedRows, masterDataCacheTtlHours, TimeUnit.HOURS);
         return toMasterDataRecords(fetchedRows);
+    }
+
+    @Override
+    public ApiResponse searchOrgHierarchy(ApiRequest<OrgHierarchySearchRequest> request, String accessToken) {
+        authUtils.validateCallerAuthenticationAndFetchUserId(accessToken);
+        OrgHierarchySearchRequest body = request.getRequest();
+        OrgHierarchySearchFilter filters = Objects.requireNonNullElseGet(body.getFilters(), OrgHierarchySearchFilter::new);
+        String parentOrgId = AppUtil.defaultIfBlank(filters.getParentOrgId(), null);
+        String excludeOrgWithChildren = AppUtil.defaultIfBlank(filters.getExcludeOrgWithChildren(), null);
+
+        String rootOrgId;
+        int rootLevel;
+        if (parentOrgId != null) {
+            List<String> ancestorChain = chainUpOrNotFound(parentOrgId);
+            rootOrgId = rootOrgIdOf(ancestorChain);
+            rootLevel = Math.max(Constants.ROOT_LEVEL_ZERO, ancestorChain.size() - 1);
+        } else if (excludeOrgWithChildren != null) {
+            // the moving org's own root is always an active L0 - no further ancestor lookup needed
+            rootOrgId = rootOrgIdOf(chainUpOrNotFound(excludeOrgWithChildren));
+            parentOrgId = rootOrgId;
+            rootLevel = Constants.ROOT_LEVEL_ZERO;
+            log.debug("orgHierarchy search: move-target mode, excludeOrgWithChildren={}, resolved rootOrgId={}", excludeOrgWithChildren, rootOrgId);
+        } else {
+            throw new ServiceException(ErrorCode.INVALID_REQUEST,
+                    "filters.parentOrgId is required when filters.excludeOrgWithChildren is not provided");
+        }
+        Map<Integer, HierarchyLevelRecord> levels = orgHierarchyLevelService.levelMapFor(rootOrgId);
+
+        Integer level = filters.getLevel();
+        Integer depth = level != null ? level - rootLevel : null;
+        int depthLimit = depth != null ? Math.max(1, Math.min(depth, maxDepth)) : maxDepth;
+
+        String query = AppUtil.isBlank(body.getQuery()) ? null : body.getQuery().trim();
+        String queryPattern = query == null ? null : AppUtil.likeContainsPattern(query);
+        int page = AppUtil.pageOrDefault(body.getPage());
+        int limit = AppUtil.limitOrDefault(body.getLimit());
+
+        PageWithCount<OrgHierarchyDtoWithDepth> searchPage = orgHierarchyRepository.findDescendantsPageWithCount(
+                parentOrgId, depthLimit, query, queryPattern, excludeOrgWithChildren, depth, page * limit, limit);
+
+        List<OrgHierarchySearchDto> items = new ArrayList<>();
+        for (OrgHierarchyDtoWithDepth row : searchPage.rows()) {
+            OrgHierarchyDto node = row.node();
+            int itemLevel = rootLevel + row.depth();
+            items.add(new OrgHierarchySearchDto(node.id(), node.name(), itemLevel, orgHierarchyLevelService.levelNameOf(levels, itemLevel, node.idle())));
+        }
+        log.debug("orgHierarchy search: rootOrgId={}, excludeOrgWithChildren={}, level={}, query={}, page={}, limit={}, totalCount={}, returned={}",
+                rootOrgId, excludeOrgWithChildren, level, query, page, limit, searchPage.totalCount(), items.size());
+        return versionedResponse(Constants.API_HIERARCHY_LOOKUP, new PagedSearchResponse<>(searchPage.totalCount(), page, limit, items));
+    }
+
+    /** {@code chainUp(id)}, refusing with {@code ORG_NOT_FOUND} instead of silently returning an empty chain when {@code id} isn't in the hierarchy at all. */
+    private List<String> chainUpOrNotFound(String id) {
+        List<String> ancestorChain = orgHierarchyRepository.chainUp(id);
+        if (CollectionUtils.isEmpty(ancestorChain)) {
+            throw notFound(id);
+        }
+        return ancestorChain;
+    }
+
+    @Override
+    public ApiResponse searchUnmappedOrganisations(ApiRequest<UnmappedOrgsRequest> request, String accessToken) {
+        authUtils.validateCallerAuthenticationAndFetchUserId(accessToken);
+        UnmappedOrgsRequest body = request.getRequest();
+        UnmappedOrgsFilter filters = Objects.requireNonNullElseGet(body.getFilters(), UnmappedOrgsFilter::new);
+        String query = AppUtil.isBlank(body.getQuery()) ? null : body.getQuery().trim();
+        int page = AppUtil.pageOrDefault(body.getPage());
+        int limit = AppUtil.limitOrDefault(body.getLimit());
+
+        List<Map<String, Object>> candidates = elasticsearchUtil.scrollSearch(externalServiceProperties.getElasticsearchIndexAlias(),
+                unmappedOrgsQuery(filters, query), externalServiceProperties.getElasticsearchScrollPageSize(),
+                externalServiceProperties.getElasticsearchScrollKeepAliveMinutes());
+        log.debug("unmappedOrgs search: ministryOrStateId={}, ministryOrStateType={}, candidatesFromElasticsearch={}",
+                filters.getMinistryOrStateId(), filters.getMinistryOrStateType(), candidates.size());
+
+        Map<String, Map<String, Object>> candidatesById = new LinkedHashMap<>();
+        for (Map<String, Object> candidate : candidates) {
+            Object id = candidate.get(Constants.ID);
+            if (id != null) {
+                candidatesById.put(String.valueOf(id), candidate);
+            }
+        }
+        // Phase 2 ACID guard: an Elasticsearch directory hit can still be mid-sync a few seconds after a link, so
+        // re-verify against org_hierarchy itself rather than trusting parentPathId being empty/missing in ES alone.
+        Set<String> activeMappedIds = orgHierarchyRepository.findActiveMappedIds(candidatesById.keySet());
+        if (!activeMappedIds.isEmpty()) {
+            log.info("unmappedOrgs search: excluded {} candidate(s) already mapped despite the Elasticsearch directory not reflecting it yet: {}",
+                    activeMappedIds.size(), activeMappedIds);
+        }
+
+        List<UnmappedOrgDto> unmapped = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Object>> entry : candidatesById.entrySet()) {
+            if (!activeMappedIds.contains(entry.getKey())) {
+                Map<String, Object> candidate = entry.getValue();
+                unmapped.add(new UnmappedOrgDto(entry.getKey(), stringOrNull(candidate.get(Constants.ORG_NAME)),
+                        stringOrNull(candidate.get(Constants.MINISTRY_OR_STATE_ID)), stringOrNull(candidate.get(Constants.MINISTRY_OR_STATE_NAME))));
+            }
+        }
+        unmapped.sort(Comparator.comparing(UnmappedOrgDto::name, String.CASE_INSENSITIVE_ORDER).thenComparing(UnmappedOrgDto::id));
+
+        int offset = page * limit;
+        List<UnmappedOrgDto> pageItems = offset >= unmapped.size() ? Collections.emptyList()
+                : unmapped.subList(offset, Math.min(offset + limit, unmapped.size()));
+        log.debug("unmappedOrgs search: unmappedTotal={}, page={}, limit={}, returned={}", unmapped.size(), page, limit, pageItems.size());
+        return versionedResponse(Constants.API_HIERARCHY_UNMAPPED_ORGS, new PagedSearchResponse<>(unmapped.size(), page, limit, pageItems));
+    }
+
+    private static ObjectNode unmappedOrgsQuery(UnmappedOrgsFilter filters, String query) {
+        List<ObjectNode> must = new ArrayList<>();
+        if (filters.getStatus() != null) {
+            must.add(ElasticsearchUtil.term(Constants.STATUS, filters.getStatus()));
+        }
+        if (!AppUtil.isBlank(filters.getMinistryOrStateType())) {
+            must.add(ElasticsearchUtil.term(Constants.MINISTRY_OR_STATE_TYPE + Constants.RAW_FIELD_SUFFIX, filters.getMinistryOrStateType()));
+        }
+        if (!AppUtil.isBlank(filters.getMinistryOrStateId())) {
+            must.add(ElasticsearchUtil.term(Constants.MINISTRY_OR_STATE_ID + Constants.RAW_FIELD_SUFFIX, filters.getMinistryOrStateId()));
+        }
+        if (query != null) {
+            must.add(ElasticsearchUtil.anyOf(List.of(
+                    ElasticsearchUtil.term(Constants.ID + Constants.RAW_FIELD_SUFFIX, query),
+                    ElasticsearchUtil.term(Constants.IDENTIFIER + Constants.RAW_FIELD_SUFFIX, query),
+                    ElasticsearchUtil.matchPhrasePrefix(Constants.ORG_NAME, query))));
+        }
+        List<ObjectNode> mustNot = List.of(
+                ElasticsearchUtil.exists(Constants.PARENT_PATH_ID_KEY),
+                ElasticsearchUtil.term(Constants.PARENT_PATH_ID_KEY + Constants.RAW_FIELD_SUFFIX, Constants.EMPTY_PARENT_PATH));
+        return ElasticsearchUtil.boolQuery(must, mustNot);
+    }
+
+    private static String stringOrNull(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     private List<Map<String, Object>> fetchActiveOrgsUnderRoot(String rootOrgId) {

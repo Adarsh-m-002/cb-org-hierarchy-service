@@ -3,6 +3,7 @@ package com.hierarchyhub.repository;
 import com.hierarchyhub.dto.Constants;
 import com.hierarchyhub.model.OrgHierarchyDto;
 import com.hierarchyhub.model.OrgHierarchyDtoWithDepth;
+import com.hierarchyhub.model.PageWithCount;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
@@ -16,10 +17,13 @@ import java.sql.SQLException;
 import java.sql.Types;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Repository
 public class OrgHierarchyRepository {
@@ -77,6 +81,29 @@ public class OrgHierarchyRepository {
         MapSqlParameterSource p = params("orgId", orgId).addValue("depthLimit", depthLimit).addValue("offset", offset).addValue("limit", limit)
                 .addValue("queryExact", queryExact, Types.VARCHAR).addValue("queryPattern", queryPattern, Types.VARCHAR);
         return jdbc.query(OrgHierarchySql.DESCENDANTS_PAGE_BY_OFFSET, p, ROW_MAPPER_WITH_DEPTH);
+    }
+
+    public PageWithCount<OrgHierarchyDtoWithDepth> findDescendantsPageWithCount(String orgId, int depthLimit, String queryExact,
+            String queryPattern, String excludeOrgWithChildren, Integer depth, int offset, int limit) {
+        MapSqlParameterSource p = params(Constants.ORGANIZATION_ID, orgId)
+                .addValue(Constants.DEPTH_LIMIT, depthLimit).addValue(Constants.OFFSET, offset).addValue(Constants.LIMIT, limit)
+                .addValue(Constants.QUERY_EXACT, queryExact, Types.VARCHAR).addValue(Constants.QUERY_PATTERN, queryPattern, Types.VARCHAR)
+                .addValue(Constants.EXCLUDE_ORG_WITH_CHILDREN, excludeOrgWithChildren, Types.VARCHAR)
+                .addValue(Constants.LEVEL, depth, Types.INTEGER);
+        long[] totalCount = {0};
+        List<OrgHierarchyDtoWithDepth> rows = jdbc.query(OrgHierarchySql.DESCENDANTS_PAGE_WITH_COUNT, p, (rs, rowNum) -> {
+            totalCount[0] = rs.getLong(Constants.TOTAL_COUNT);
+            return new OrgHierarchyDtoWithDepth(mapRow(rs, rowNum), rs.getInt(Constants.DEPTH));
+        });
+        return new PageWithCount<>(rows, totalCount[0]);
+    }
+
+    /** Of {@code ids}, just the ones that are active mapped nodes right now - see {@link OrgHierarchySql#FIND_ACTIVE_IDS}. */
+    public Set<String> findActiveMappedIds(Collection<String> ids) {
+        if (ids.isEmpty()) {
+            return Collections.emptySet();
+        }
+        return new HashSet<>(jdbc.queryForList(OrgHierarchySql.FIND_ACTIVE_IDS, idsParam(ids), String.class));
     }
 
     public int countDescendants(String id) {

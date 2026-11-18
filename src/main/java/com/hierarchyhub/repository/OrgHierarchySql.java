@@ -105,6 +105,24 @@ final class OrgHierarchySql {
             "WHERE (:queryExact IS NULL OR id = :queryExact OR lower(name) LIKE lower(:queryPattern) ESCAPE '\\') " +
             "ORDER BY lower(name), id LIMIT :limit OFFSET :offset";
 
+    static final String DESCENDANTS_PAGE_WITH_COUNT =
+            "WITH RECURSIVE sub AS ( " +
+            "  SELECT " + SELECT_COLUMNS + ", 1 AS depth FROM " + TABLE_NAME + " WHERE parent_id = :orgId " +
+            "    AND (:excludeOrgWithChildren IS NULL OR id != :excludeOrgWithChildren) " +
+            "  UNION ALL " +
+            "  SELECT o.id, o.name, o.parent_id, o.idle, o.child_count, s.depth + 1 " +
+            "  FROM " + TABLE_NAME + " o JOIN sub s ON o.parent_id = s.id " +
+            "  WHERE s.depth < :depthLimit " +
+            "    AND (:excludeOrgWithChildren IS NULL OR o.id != :excludeOrgWithChildren) " +
+            ") SELECT " + SELECT_COLUMNS + ", depth, count(*) OVER() AS " + Constants.TOTAL_COUNT + " FROM sub " +
+            "WHERE (:queryExact IS NULL OR id = :queryExact OR lower(name) LIKE lower(:queryPattern) ESCAPE '\\') " +
+            "  AND (:level IS NULL OR depth = :level) " +
+            "ORDER BY depth, lower(name), id LIMIT :limit OFFSET :offset";
+
+    /** Of {@code :ids}, just the ones that are active mapped nodes right now - the real-time ACID guard behind the two-phase unmapped-orgs search (an Elasticsearch directory hit can lag a few seconds behind a just-completed link). */
+    static final String FIND_ACTIVE_IDS =
+            "SELECT id FROM " + TABLE_NAME + " WHERE id IN (:ids) AND idle = false";
+
     /** Count of every descendant of {@code id} (not including {@code id} itself), bounded by {@code maxDepth} hops. */
     static final String COUNT_DESCENDANTS =
             "WITH RECURSIVE sub(id, depth) AS ( " +

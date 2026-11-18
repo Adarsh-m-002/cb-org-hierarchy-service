@@ -5,8 +5,10 @@ import com.hierarchyhub.dto.CompleteHierarchyRequestParams;
 import com.hierarchyhub.dto.Constants;
 import com.hierarchyhub.dto.LinkOrgRequestBody;
 import com.hierarchyhub.dto.MoveOrgRequestBody;
+import com.hierarchyhub.dto.OrgHierarchySearchRequest;
 import com.hierarchyhub.dto.ReadChildrenRequestBody;
 import com.hierarchyhub.dto.UnlinkOrgRequestBody;
+import com.hierarchyhub.dto.UnmappedOrgsRequest;
 import com.hierarchyhub.dto.UpdateHierarchyLevelsRequestBody;
 import com.hierarchyhub.model.ApiResponse;
 import com.hierarchyhub.service.BulkLinkFileService;
@@ -112,6 +114,20 @@ public class OrgHierarchyController {
     public ResponseEntity<ApiResponse> readLevels(@PathVariable String rootOrgId,
                                                    @RequestHeader(Constants.AUTH_TOKEN_HEADER) String accessToken) {
         ApiResponse response = orgHierarchyLevelService.readHierarchyLevels(rootOrgId, accessToken);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    @PostMapping("/org-lookup")
+    public ResponseEntity<ApiResponse> search(@Valid @RequestBody ApiRequest<OrgHierarchySearchRequest> request,
+                                               @RequestHeader(Constants.AUTH_TOKEN_HEADER) String accessToken) {
+        ApiResponse response = orgHierarchyService.searchOrgHierarchy(request, accessToken);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    @PostMapping("/unmapped-orgs")
+    public ResponseEntity<ApiResponse> unmappedOrgs(@Valid @RequestBody ApiRequest<UnmappedOrgsRequest> request,
+                                                      @RequestHeader(Constants.AUTH_TOKEN_HEADER) String accessToken) {
+        ApiResponse response = orgHierarchyService.searchUnmappedOrganisations(request, accessToken);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 }

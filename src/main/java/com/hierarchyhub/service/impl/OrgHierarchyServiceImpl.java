@@ -521,7 +521,7 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
         }
         log.debug("orgHierarchy search: rootOrgId={}, excludeOrgWithChildren={}, level={}, query={}, page={}, limit={}, totalCount={}, returned={}",
                 rootOrgId, excludeOrgWithChildren, level, query, page, limit, searchPage.totalCount(), items.size());
-        return versionedResponse(Constants.API_HIERARCHY_SEARCH, new PagedSearchResponse<>(searchPage.totalCount(), page, limit, items));
+        return versionedResponse(Constants.API_HIERARCHY_LOOKUP, new PagedSearchResponse<>(searchPage.totalCount(), page, limit, items));
     }
 
     /** {@code chainUp(id)}, refusing with {@code ORG_NOT_FOUND} instead of silently returning an empty chain when {@code id} isn't in the hierarchy at all. */

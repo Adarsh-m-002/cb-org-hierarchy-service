@@ -160,7 +160,7 @@ public class Constants {
     public static final String PARENT_PATH_ID_KEY = "parentPathId";
 
     // generic search & pagination - reusable by any paginated endpoint, not just search/unmapped-orgs
-    public static final String API_HIERARCHY_SEARCH = "api.org.hierarchy.search";
+    public static final String API_HIERARCHY_LOOKUP = "api.org.hierarchy.lookup";
     public static final String API_HIERARCHY_UNMAPPED_ORGS = "api.org.hierarchy.unmapped.orgs";
     public static final int DEFAULT_PAGE = 0;
     public static final int DEFAULT_PAGE_SIZE = 50;

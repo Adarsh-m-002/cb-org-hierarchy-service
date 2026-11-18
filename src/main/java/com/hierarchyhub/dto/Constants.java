@@ -174,7 +174,8 @@ public class Constants {
     public static final String QUERY_PATTERN = "queryPattern";
     public static final String OFFSET = "offset";
     public static final String LIMIT = "limit";
-    public static final String EXCLUDE_ORGANIZATION_WITH_CHILDREN = "excludeOrganizationWithChildren";
+    public static final String EXCLUDE_ORG_WITH_CHILDREN = "excludeOrgWithChildren";
+    public static final String LEVEL = "level";
 
     // outbound HTTP calls to external Sunbird APIs (via the shared org.igot.common OutboundRequestHandlerServiceImpl)
     public static final String AUTHORIZATION_HEADER = "Authorization";

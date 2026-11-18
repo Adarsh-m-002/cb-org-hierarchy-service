@@ -117,7 +117,7 @@ public class OrgHierarchyController {
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
-    @PostMapping("/search")
+    @PostMapping("/org-lookup")
     public ResponseEntity<ApiResponse> search(@Valid @RequestBody ApiRequest<OrgHierarchySearchRequest> request,
                                                @RequestHeader(Constants.AUTH_TOKEN_HEADER) String accessToken) {
         ApiResponse response = orgHierarchyService.searchOrgHierarchy(request, accessToken);

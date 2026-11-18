@@ -30,7 +30,7 @@ public interface OrgHierarchyService {
 
     List<OrgDataRecord> getMasterData(String rootOrgId);
 
-    /** Paginated search of mapped orgs (L1-L10) under a Ministry/State root - either a plain search, or (when {@code filters.excludeOrganizationWithChildren} is given) a pre-filtered list of safe move-target parents. */
+    /** Paginated search of mapped orgs (L1-L10) under a Ministry/State root - either a plain search, or (when {@code filters.excludeOrgWithChildren} is given) a pre-filtered list of safe move-target parents. */
     ApiResponse searchOrgHierarchy(ApiRequest<OrgHierarchySearchRequest> request, String accessToken);
 
     /** Paginated search of organisations belonging to a Ministry/State that are not yet linked into the hierarchy. */

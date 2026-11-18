@@ -83,19 +83,13 @@ public class OrgHierarchyRepository {
         return jdbc.query(OrgHierarchySql.DESCENDANTS_PAGE_BY_OFFSET, p, ROW_MAPPER_WITH_DEPTH);
     }
 
-    /**
-     * One page of {@code orgId}'s descendants plus the total matching count, optionally pruning
-     * {@code excludeOrganizationWithChildren} and its whole subtree out of the recursion - see
-     * {@link OrgHierarchySql#DESCENDANTS_PAGE_WITH_COUNT}. Backs {@code /search}'s both use cases: a plain general
-     * search ({@code excludeOrganizationWithChildren} is {@code null}) and the move-target-parent search ({@code
-     * excludeOrganizationWithChildren} is the org being moved).
-     */
     public PageWithCount<OrgHierarchyDtoWithDepth> findDescendantsPageWithCount(String orgId, int depthLimit, String queryExact,
-            String queryPattern, String excludeOrganizationWithChildren, int offset, int limit) {
+            String queryPattern, String excludeOrgWithChildren, Integer depth, int offset, int limit) {
         MapSqlParameterSource p = params(Constants.ORGANIZATION_ID, orgId)
                 .addValue(Constants.DEPTH_LIMIT, depthLimit).addValue(Constants.OFFSET, offset).addValue(Constants.LIMIT, limit)
                 .addValue(Constants.QUERY_EXACT, queryExact, Types.VARCHAR).addValue(Constants.QUERY_PATTERN, queryPattern, Types.VARCHAR)
-                .addValue(Constants.EXCLUDE_ORGANIZATION_WITH_CHILDREN, excludeOrganizationWithChildren, Types.VARCHAR);
+                .addValue(Constants.EXCLUDE_ORG_WITH_CHILDREN, excludeOrgWithChildren, Types.VARCHAR)
+                .addValue(Constants.LEVEL, depth, Types.INTEGER);
         long[] totalCount = {0};
         List<OrgHierarchyDtoWithDepth> rows = jdbc.query(OrgHierarchySql.DESCENDANTS_PAGE_WITH_COUNT, p, (rs, rowNum) -> {
             totalCount[0] = rs.getLong(Constants.TOTAL_COUNT);

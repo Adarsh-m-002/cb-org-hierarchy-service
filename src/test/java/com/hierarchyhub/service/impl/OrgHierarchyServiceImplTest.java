@@ -65,31 +65,31 @@ public class OrgHierarchyServiceImplTest {
     // ------------------------------------------------------------------ searchOrgHierarchy
 
     @Test
-    public void searchOrgHierarchyRejectsWhenNeitherIdentifierNorExcludeOrganizationWithChildrenIsGiven() {
+    public void searchOrgHierarchyRejectsWhenNeitherParentOrgIdNorExcludeOrgWithChildrenIsGiven() {
         ApiRequest<OrgHierarchySearchRequest> request = requestWith(new OrgHierarchySearchFilter(), null, null, null);
 
         assertThrows(ServiceException.class, () -> service.searchOrgHierarchy(request, "token"));
     }
 
     @Test
-    public void searchOrgHierarchyRejectsAnUnknownIdentifier() {
+    public void searchOrgHierarchyRejectsAnUnknownParentOrgId() {
         when(orgHierarchyRepository.chainUp("missing")).thenReturn(List.of());
         OrgHierarchySearchFilter filters = new OrgHierarchySearchFilter();
-        filters.setIdentifier("missing");
+        filters.setParentOrgId("missing");
         ApiRequest<OrgHierarchySearchRequest> request = requestWith(filters, null, null, null);
 
         assertThrows(ServiceException.class, () -> service.searchOrgHierarchy(request, "token"));
     }
 
     @Test
-    public void searchOrgHierarchyGeneralSearchPassesIdentifierDirectlyWithNoExclusion() {
+    public void searchOrgHierarchyGeneralSearchPassesParentOrgIdDirectlyWithNoExclusion() {
         when(orgHierarchyRepository.chainUp("root-1")).thenReturn(List.of("root-1"));
         PageWithCount<OrgHierarchyDtoWithDepth> page = new PageWithCount<>(
                 List.of(new OrgHierarchyDtoWithDepth(new OrgHierarchyDto("c1", "Health Dept", "root-1", false, 0), 1)), 142L);
-        when(orgHierarchyRepository.findDescendantsPageWithCount(eq("root-1"), eq(10), isNull(), isNull(), isNull(), eq(0), eq(50)))
+        when(orgHierarchyRepository.findDescendantsPageWithCount(eq("root-1"), eq(10), isNull(), isNull(), isNull(), isNull(), eq(0), eq(50)))
                 .thenReturn(page);
         OrgHierarchySearchFilter filters = new OrgHierarchySearchFilter();
-        filters.setIdentifier("root-1");
+        filters.setParentOrgId("root-1");
         ApiRequest<OrgHierarchySearchRequest> request = requestWith(filters, null, null, null);
 
         ApiResponse response = service.searchOrgHierarchy(request, "token");
@@ -97,7 +97,7 @@ public class OrgHierarchyServiceImplTest {
         assertEquals(142L, ((Number) response.get("count")).longValue());
         assertEquals(0, response.get("page"));
         assertEquals(50, response.get("limit"));
-        List<?> items = (List<?>) response.get("items");
+        List<?> items = (List<?>) response.get("organizations");
         assertEquals(1, items.size());
         Map<?, ?> item = (Map<?, ?>) items.get(0);
         assertEquals("c1", item.get("id"));
@@ -105,19 +105,57 @@ public class OrgHierarchyServiceImplTest {
     }
 
     @Test
-    public void searchOrgHierarchyMoveTargetSearchResolvesIdentifierFromExcludeOrganizationWithChildrenAndPrunesIt() {
+    public void searchOrgHierarchyMoveTargetSearchResolvesParentOrgIdFromExcludeOrgWithChildrenAndPrunesIt() {
         when(orgHierarchyRepository.chainUp("moving-org")).thenReturn(List.of("moving-org", "dept-1", "root-1"));
         PageWithCount<OrgHierarchyDtoWithDepth> page = new PageWithCount<>(List.of(), 0L);
-        when(orgHierarchyRepository.findDescendantsPageWithCount(eq("root-1"), eq(10), isNull(), isNull(), eq("moving-org"), eq(0), eq(50)))
+        when(orgHierarchyRepository.findDescendantsPageWithCount(eq("root-1"), eq(10), isNull(), isNull(), eq("moving-org"), isNull(), eq(0), eq(50)))
                 .thenReturn(page);
         OrgHierarchySearchFilter filters = new OrgHierarchySearchFilter();
-        filters.setExcludeOrganizationWithChildren("moving-org");
+        filters.setExcludeOrgWithChildren("moving-org");
         ApiRequest<OrgHierarchySearchRequest> request = requestWith(filters, null, null, null);
 
         service.searchOrgHierarchy(request, "token");
 
-        verify(orgHierarchyRepository).findDescendantsPageWithCount(eq("root-1"), eq(10), isNull(), isNull(), eq("moving-org"), eq(0), eq(50));
+        verify(orgHierarchyRepository).findDescendantsPageWithCount(eq("root-1"), eq(10), isNull(), isNull(), eq("moving-org"), isNull(), eq(0), eq(50));
         verify(orgHierarchyRepository, never()).chainUp("root-1"); // the moving org's own chain already told us its root is L0 - no second lookup needed
+    }
+
+    @Test
+    public void searchOrgHierarchyLevelFilterCapsRecursionDepthAndFiltersToThatLevel() {
+        when(orgHierarchyRepository.chainUp("root-1")).thenReturn(List.of("root-1"));
+        PageWithCount<OrgHierarchyDtoWithDepth> page = new PageWithCount<>(
+                List.of(new OrgHierarchyDtoWithDepth(new OrgHierarchyDto("c1", "Directorate", "p1", false, 0), 2)), 1L);
+        when(orgHierarchyRepository.findDescendantsPageWithCount(eq("root-1"), eq(2), isNull(), isNull(), isNull(), eq(2), eq(0), eq(50)))
+                .thenReturn(page);
+        OrgHierarchySearchFilter filters = new OrgHierarchySearchFilter();
+        filters.setParentOrgId("root-1");
+        filters.setLevel(2);
+        ApiRequest<OrgHierarchySearchRequest> request = requestWith(filters, null, null, null);
+
+        service.searchOrgHierarchy(request, "token");
+
+        // depthLimit passed to the repository is capped to the requested level (2), not the service's full maxDepth (10)
+        verify(orgHierarchyRepository).findDescendantsPageWithCount(eq("root-1"), eq(2), isNull(), isNull(), isNull(), eq(2), eq(0), eq(50));
+    }
+
+    @Test
+    public void searchOrgHierarchyPreservesTheRepositorysLevelByLevelRowOrder() {
+        when(orgHierarchyRepository.chainUp("root-1")).thenReturn(List.of("root-1"));
+        // the repository (ORDER BY depth, lower(name), id) already returns L1 before L2 even though "Alpha" < "Zeta" alphabetically
+        PageWithCount<OrgHierarchyDtoWithDepth> page = new PageWithCount<>(List.of(
+                new OrgHierarchyDtoWithDepth(new OrgHierarchyDto("l1", "Zeta Department", "root-1", false, 0), 1),
+                new OrgHierarchyDtoWithDepth(new OrgHierarchyDto("l2", "Alpha Directorate", "l1", false, 0), 2)), 2L);
+        when(orgHierarchyRepository.findDescendantsPageWithCount(eq("root-1"), eq(10), isNull(), isNull(), isNull(), isNull(), eq(0), eq(50)))
+                .thenReturn(page);
+        OrgHierarchySearchFilter filters = new OrgHierarchySearchFilter();
+        filters.setParentOrgId("root-1");
+        ApiRequest<OrgHierarchySearchRequest> request = requestWith(filters, null, null, null);
+
+        ApiResponse response = service.searchOrgHierarchy(request, "token");
+
+        List<?> organizations = (List<?>) response.get("organizations");
+        assertEquals("l1", ((Map<?, ?>) organizations.get(0)).get("id"));
+        assertEquals("l2", ((Map<?, ?>) organizations.get(1)).get("id"));
     }
 
     // ------------------------------------------------------------------ searchUnmappedOrganisations
@@ -137,7 +175,7 @@ public class OrgHierarchyServiceImplTest {
         ApiResponse response = service.searchUnmappedOrganisations(request, "token");
 
         assertEquals(1L, ((Number) response.get("count")).longValue());
-        List<?> items = (List<?>) response.get("items");
+        List<?> items = (List<?>) response.get("organizations");
         assertEquals(1, items.size());
         Map<?, ?> item = (Map<?, ?>) items.get(0);
         assertEquals("o1", item.get("id"));
@@ -160,7 +198,7 @@ public class OrgHierarchyServiceImplTest {
         ApiResponse response = service.searchUnmappedOrganisations(request, "token");
 
         assertEquals(1L, ((Number) response.get("count")).longValue());
-        List<?> items = (List<?>) response.get("items");
+        List<?> items = (List<?>) response.get("organizations");
         assertEquals(0, items.size());
     }
 

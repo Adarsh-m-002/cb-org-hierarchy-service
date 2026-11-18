@@ -480,26 +480,30 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
         authUtils.validateCallerAuthenticationAndFetchUserId(accessToken);
         OrgHierarchySearchRequest body = request.getRequest();
         OrgHierarchySearchFilter filters = Objects.requireNonNullElseGet(body.getFilters(), OrgHierarchySearchFilter::new);
-        String identifier = AppUtil.defaultIfBlank(filters.getIdentifier(), null);
-        String excludeOrganizationWithChildren = AppUtil.defaultIfBlank(filters.getExcludeOrganizationWithChildren(), null);
+        String parentOrgId = AppUtil.defaultIfBlank(filters.getParentOrgId(), null);
+        String excludeOrgWithChildren = AppUtil.defaultIfBlank(filters.getExcludeOrgWithChildren(), null);
 
         String rootOrgId;
         int rootLevel;
-        if (identifier != null) {
-            List<String> ancestorChain = chainUpOrNotFound(identifier);
+        if (parentOrgId != null) {
+            List<String> ancestorChain = chainUpOrNotFound(parentOrgId);
             rootOrgId = rootOrgIdOf(ancestorChain);
             rootLevel = Math.max(Constants.ROOT_LEVEL_ZERO, ancestorChain.size() - 1);
-        } else if (excludeOrganizationWithChildren != null) {
+        } else if (excludeOrgWithChildren != null) {
             // the moving org's own root is always an active L0 - no further ancestor lookup needed
-            rootOrgId = rootOrgIdOf(chainUpOrNotFound(excludeOrganizationWithChildren));
-            identifier = rootOrgId;
+            rootOrgId = rootOrgIdOf(chainUpOrNotFound(excludeOrgWithChildren));
+            parentOrgId = rootOrgId;
             rootLevel = Constants.ROOT_LEVEL_ZERO;
-            log.debug("orgHierarchy search: move-target mode, excludeOrganizationWithChildren={}, resolved rootOrgId={}", excludeOrganizationWithChildren, rootOrgId);
+            log.debug("orgHierarchy search: move-target mode, excludeOrgWithChildren={}, resolved rootOrgId={}", excludeOrgWithChildren, rootOrgId);
         } else {
             throw new ServiceException(ErrorCode.INVALID_REQUEST,
-                    "filters.identifier is required when filters.excludeOrganizationWithChildren is not provided");
+                    "filters.parentOrgId is required when filters.excludeOrgWithChildren is not provided");
         }
         Map<Integer, HierarchyLevelRecord> levels = orgHierarchyLevelService.levelMapFor(rootOrgId);
+
+        Integer level = filters.getLevel();
+        Integer depth = level != null ? level - rootLevel : null;
+        int depthLimit = depth != null ? Math.max(1, Math.min(depth, maxDepth)) : maxDepth;
 
         String query = AppUtil.isBlank(body.getQuery()) ? null : body.getQuery().trim();
         String queryPattern = query == null ? null : AppUtil.likeContainsPattern(query);
@@ -507,16 +511,16 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
         int limit = AppUtil.limitOrDefault(body.getLimit());
 
         PageWithCount<OrgHierarchyDtoWithDepth> searchPage = orgHierarchyRepository.findDescendantsPageWithCount(
-                identifier, maxDepth, query, queryPattern, excludeOrganizationWithChildren, page * limit, limit);
+                parentOrgId, depthLimit, query, queryPattern, excludeOrgWithChildren, depth, page * limit, limit);
 
         List<OrgHierarchySearchDto> items = new ArrayList<>();
         for (OrgHierarchyDtoWithDepth row : searchPage.rows()) {
             OrgHierarchyDto node = row.node();
-            int level = rootLevel + row.depth();
-            items.add(new OrgHierarchySearchDto(node.id(), node.name(), level, orgHierarchyLevelService.levelNameOf(levels, level, node.idle())));
+            int itemLevel = rootLevel + row.depth();
+            items.add(new OrgHierarchySearchDto(node.id(), node.name(), itemLevel, orgHierarchyLevelService.levelNameOf(levels, itemLevel, node.idle())));
         }
-        log.debug("orgHierarchy search: rootOrgId={}, excludeOrganizationWithChildren={}, query={}, page={}, limit={}, totalCount={}, returned={}",
-                rootOrgId, excludeOrganizationWithChildren, query, page, limit, searchPage.totalCount(), items.size());
+        log.debug("orgHierarchy search: rootOrgId={}, excludeOrgWithChildren={}, level={}, query={}, page={}, limit={}, totalCount={}, returned={}",
+                rootOrgId, excludeOrgWithChildren, level, query, page, limit, searchPage.totalCount(), items.size());
         return versionedResponse(Constants.API_HIERARCHY_SEARCH, new PagedSearchResponse<>(searchPage.totalCount(), page, limit, items));
     }
 

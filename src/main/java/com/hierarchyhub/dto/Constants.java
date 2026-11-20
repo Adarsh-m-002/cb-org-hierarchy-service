@@ -139,6 +139,10 @@ public class Constants {
     public static final String MSG_LEVELS_UPDATED = "Successfully updated hierarchy level definitions";
     // a fixed business rule (also enforced by org_hierarchy_level's own CHECK constraint), never an environment setting
     public static final int MAX_ALLOWED_LEVEL = 10;
+
+    // Caps a single /link call's associations list to the same size bulk-link already chunks its own rows at
+    // (org-hierarchy.cassandra.fetch-chunk-size) - a larger batch belongs in bulk-link, not one synchronous call.
+    public static final int MAX_LINK_ASSOCIATIONS_PER_REQUEST = 500;
     public static final int ROOT_LEVEL_ZERO = 0;
     public static final String ROOT_LEVEL_ZERO_NAME = "L0";
 
@@ -158,6 +162,16 @@ public class Constants {
     // Sunbird org-update API request body field names
     public static final String ORGANIZATION_ID = "orgId";
     public static final String PARENT_PATH_ID_KEY = "parentPathId";
+
+    // lms-service org-update API ("PATCH /private/v1/org/update") - wrapped in the REQUEST envelope, see OrgUpdateServiceImpl
+    public static final String REQUEST = "request";
+    public static final String ORGANISATION_ID = "organisationId";
+    public static final String HIERARCHY_LEVEL = "hierarchyLevel";
+    public static final String UPDATED_BY = "updatedBy";
+
+    public static final List<String> HIERARCHY_LEVEL_NAMES = List.of(
+            "LevelZero", "LevelOne", "LevelTwo", "LevelThree", "LevelFour", "LevelFive",
+            "LevelSix", "LevelSeven", "LevelEight", "LevelNine", "LevelTen");
 
     // generic search & pagination - reusable by any paginated endpoint, not just search/unmapped-orgs
     public static final String API_HIERARCHY_LOOKUP = "api.org.hierarchy.lookup";

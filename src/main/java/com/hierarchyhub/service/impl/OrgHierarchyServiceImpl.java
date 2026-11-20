@@ -185,6 +185,10 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
             orgHierarchyValidator.requireMinistryOrStateRoot(parentId, parentRecord);
             orgHierarchyRepository.createRoot(parentId, nameOrId(parentRecord), userId);
             orgHierarchyLevelService.ensureDefaultLevelsProvisioned(parentId, userId);
+            // A brand-new L0 root never gets a child/move event of its own - without this, its own
+            // parentPathId="" / hierarchyLevel=LevelZero would never reach the org-update API at all.
+            HierarchyEvent rootCreatedEvent = createLinkEvent(parentId, null, nameOrId(parentRecord), userId);
+            publishAfterCommit(() -> hierarchyEventPublisher.publishAsync(rootCreatedEvent));
         } else if (orgHierarchyValidator.isMinistryOrStateRoot(parentRecord)) {
             // safe idempotency: a root created before the levels engine shipped may not have any rows yet
             orgHierarchyLevelService.ensureDefaultLevelsProvisioned(parentId, userId);

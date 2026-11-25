@@ -7,12 +7,9 @@ import com.hierarchyhub.model.ApiResponse;
 
 public interface OrgUpdateService {
 
-    /**
-     * Recomputes and synchronizes {@code parentPathId} for {@code orgId} and its descendants, with every optional
-     * flag at its default (cascade to all children, diff-check enabled) and no caller to authorize - used by the
-     * Kafka consumer, which has no access token to check.
-     */
-    SyncParentPathResponse resyncParentPath(String orgId);
+    SyncParentPathResponse resyncParentPath(String orgId, String userId);
+
+    SyncParentPathResponse resyncSingleOrgParentPath(String orgId, String userId);
 
     /** Authorizes the caller, repairs a single org's {@code parentPathId}, and returns the versioned API envelope. */
     ApiResponse repairOrgParentPath(String orgId, String accessToken);

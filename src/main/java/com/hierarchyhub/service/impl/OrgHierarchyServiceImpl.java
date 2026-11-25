@@ -185,6 +185,10 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
             orgHierarchyValidator.requireMinistryOrStateRoot(parentId, parentRecord);
             orgHierarchyRepository.createRoot(parentId, nameOrId(parentRecord), userId);
             orgHierarchyLevelService.ensureDefaultLevelsProvisioned(parentId, userId);
+            // A brand-new L0 root never gets a child/move event of its own - without this, its own
+            // parentPathId="" / hierarchyLevel=LevelZero would never reach the org-update API at all.
+            HierarchyEvent rootCreatedEvent = createLinkEvent(parentId, null, nameOrId(parentRecord), userId);
+            publishAfterCommit(() -> hierarchyEventPublisher.publishAsync(rootCreatedEvent));
         } else if (orgHierarchyValidator.isMinistryOrStateRoot(parentRecord)) {
             // safe idempotency: a root created before the levels engine shipped may not have any rows yet
             orgHierarchyLevelService.ensureDefaultLevelsProvisioned(parentId, userId);
@@ -303,8 +307,17 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
         orgHierarchyRepository.incrementChildCount(newParentId);
         log.info("moveOrgInHierarchy completed: orgId={}, oldParentId={}, newParentId={}", orgId, oldParentId, newParentId);
 
-        HierarchyEvent moveEvent = createMoveEvent(orgId, newParentId, oldParentId, lockedOrgHierarchyDto.name(), userId);
-        publishAfterCommit(() -> hierarchyEventPublisher.publishAsync(moveEvent));
+        List<String> movedBranchOrgIds = orgHierarchyRepository.findDescendantSubtreeOrgIds(orgId);
+        List<HierarchyEvent> moveEvents = new ArrayList<>(movedBranchOrgIds.size());
+        moveEvents.add(createMoveEvent(orgId, newParentId, oldParentId, lockedOrgHierarchyDto.name(), userId));
+        for (String descendantId : movedBranchOrgIds) {
+            if (!descendantId.equals(orgId)) {
+                moveEvents.add(createMoveDescendantResyncEvent(descendantId, userId));
+            }
+        }
+        log.info("moveOrgInHierarchy publishing {} resync event(s) for orgId={} (1 for the moved org + {} descendant(s))",
+                moveEvents.size(), orgId, moveEvents.size() - 1);
+        publishAfterCommit(() -> hierarchyEventPublisher.publishBatchAsync(moveEvents));
 
         MoveOrgResponse moved = new MoveOrgResponse(orgId, oldParentId, newParentId, true, Constants.MSG_ORG_MOVED_IN_HIERARCHY);
         return versionedResponse(Constants.API_MOVE, moved);
@@ -712,6 +725,11 @@ public class OrgHierarchyServiceImpl implements OrgHierarchyService {
 
     private static HierarchyEvent createMoveEvent(String orgId, String newParentId, String oldParentId, String name, String userId) {
         return new HierarchyEvent(orgId, newParentId, oldParentId, name, false, Constants.EVENT_TYPE_MOVE, System.currentTimeMillis(), userId);
+    }
+
+    /** A descendant's own parent_id didn't change in a move - this is purely a "your ancestor chain changed, resync yourself" trigger, same spirit as a subtree-unlink's per-descendant event. Name isn't re-fetched here, same tradeoff subtree-unlink already makes. */
+    private static HierarchyEvent createMoveDescendantResyncEvent(String orgId, String userId) {
+        return new HierarchyEvent(orgId, null, null, orgId, false, Constants.EVENT_TYPE_MOVE, System.currentTimeMillis(), userId);
     }
 
     private static HierarchyEvent createUnlinkEvent(String orgId, String prevParentId, String name, String userId) {
